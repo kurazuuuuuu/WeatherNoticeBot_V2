@@ -49,14 +49,18 @@ jobs:
         echo "  sudo chmod -R 775 ./logs ./data"
         echo "上記のコマンドは、コンテナ内のユーザー(UID:1000)が書き込みを行えるようにするためのものです。"
 
-    - name: 4. 環境変数ファイル (.env) の生成
+    - name: 4. 環境変数ファイル (.env) の生成 (修正版)
       run: |
         echo "🔑 シークレットから .env ファイルを生成します..."
         # heredocを使用して、よりクリーンにファイルを生成
+        # コメント行はheredocの外に出して、追記(>>)する形に修正
         cat << EOF > .env
         DISCORD_TOKEN=${{ secrets.DISCORD_TOKEN }}
         DISCORD_GUILD_ID=${{ secrets.DISCORD_GUILD_ID }}
         GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
+        EOF
+
+        cat << EOF >> .env
         # --- 必要に応じて以下のコメントを解除してください ---
         # DATABASE_URL=${{ secrets.DATABASE_URL }}
         # COMMAND_PREFIX=${{ secrets.COMMAND_PREFIX }}
