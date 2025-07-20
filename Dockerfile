@@ -1,46 +1,48 @@
-# Discord Weather Bot Dockerfile
+# Discord Weather Bot Dockerfile (マルチステージビルド)
+
+# --- ステージ1: ビルダー ---
+# このステージでは、依存関係をインストールした仮想環境を構築します。
+FROM python:3.12-slim as builder
+
+# 作業ディレクトリを設定
+WORKDIR /app
+
+# uvをインストール
+RUN pip install uv
+
+# 依存関係の定義ファイルのみをコピー
+# これにより、依存関係に変更がない限り、この後のステップはキャッシュが利用されます
+COPY pyproject.toml ./
+
+# uvを使って仮想環境を/opt/venvに作成
+# --systemオプションは、uvが管理するPythonではなく、ベースイメージのPythonを使うことを意味します
+RUN uv pip install --system --no-cache -r pyproject.toml
+
+# --- ステージ2: 最終イメージ ---
+# このステージでは、ビルダーで作成した仮想環境とアプリケーションコードだけをコピーします。
+# これにより、ビルドツールや不要なファイルが含まれない、軽量な最終イメージが完成します。
 FROM python:3.12-slim
 
 # 作業ディレクトリを設定
 WORKDIR /app
 
-# システムの依存関係をインストール
-RUN apt-get update && apt-get install -y \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
+# ログとデータベースディレクトリを作成
+RUN mkdir -p /app/logs /app/data
 
-# uvをインストール
-RUN pip install uv
+# 非rootユーザーを作成し、/app ディレクトリ全体の所有権をまとめて変更
+RUN useradd -m -u 1000 botuser && \
+    chown -R botuser:botuser /app
+
+# ビルダーステージから、依存関係がインストールされた仮想環境をコピー
+COPY --from=builder /usr/local/bin/ /usr/local/bin/
+COPY --from=builder /usr/local/lib/python3.12/site-packages/ /usr/local/lib/python3.12/site-packages/
 
 # アプリケーションコードをコピー
-# pyproject.tomlがREADME.mdを参照するため、ここで全てをコピーします。
 COPY . .
-
-# 非rootユーザーを作成
-RUN useradd -m -u 1000 botuser
-
-# /app ディレクトリ全体の所有権をbotuserに変更
-# これにより、COPY . . でコピーされた全てのファイルがbotuserによって所有されるようになります。
-RUN chown -R botuser:botuser /app
-
-# ログとデータベースディレクトリが存在しない場合は作成し、botuserに書き込み権限を付与
-# chmod 775 はオーナーとグループに読み書き実行権限を与えます。
-# botuserがオーナーなので、これで書き込みできるようになります。
-# -p オプションは、ディレクトリが存在しない場合のみ作成します。
-RUN mkdir -p /app/logs /app/data && \
-    chmod -R 775 /app/logs /app/data
 
 # ユーザーをbotuserに切り替える
 USER botuser
 
-# 依存関係をインストール
-# uv sync --frozen はpyproject.tomlがある場所で実行する必要があるため、
-# COPY . . の後に実行し、ユーザー切り替え後に行います。
-RUN uv sync --frozen
-
-# ヘルスチェック
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD python -c "import asyncio; import aiohttp; print('Bot is healthy')" || exit 1
-
 # ボットを起動
-CMD ["uv", "run", "python", "src/bot.py"]
+# 仮想環境はシステムに直接インストールされているため、特別なパス指定は不要です
+CMD ["python", "src/bot.py"]
