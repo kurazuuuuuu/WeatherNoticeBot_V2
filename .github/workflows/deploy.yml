@@ -3,17 +3,17 @@ name: 自動デプロイ
 on:
   push:
     branches: [ main ]
-  workflow_dispatch:
+  workflow_dispatch: # 手動実行を可能にする
 
 jobs:
   deploy:
-    runs-on: self-hosted
+    runs-on: self-hosted # Self-Hosted Runnerを使用
     
     steps:
     - name: リポジトリをチェックアウト
       uses: actions/checkout@v4
       with:
-        fetch-depth: 0
+        fetch-depth: 0 # 完全な履歴を取得（必要に応じて）
     
     - name: Docker権限とサービス状態の確認
       run: |
@@ -53,61 +53,50 @@ jobs:
         echo "✅ Docker接続が正常です"
         docker --version
         docker compose version
+
+    - name: 環境変数をシークレットから生成
+      # このステップで、GitHub Actionsのシークレットから.envファイルを動的に作成します。
+      # .envファイルはリポジトリにコミットしないため、この方法が安全です。
+      run: |
+        echo "環境変数をシークレットから.envファイルに書き込み中..."
+        # シークレットに登録した環境変数名をここに記述します。
+        # 例: DISCORD_TOKEN, GEMINI_API_KEY
+        # GitHubリポジトリのSettings -> Secrets and variables -> Actions で設定してください。
+        
+        # .envファイルの内容をヒアドキュメントで書き込む
+        cat << EOF > .env
+        DISCORD_TOKEN=${{ secrets.DISCORD_TOKEN }}
+        GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
+        # 必要に応じて、ここに他の環境変数も追加してください
+        # 例: DB_HOST=${{ secrets.DB_HOST }}
+        # 例: DB_USER=${{ secrets.DB_USER }}
+        # 例: DB_PASSWORD=${{ secrets.DB_PASSWORD }}
+        EOF
+        
+        echo "✅ .envファイルが生成されました"
+        # セキュリティのため、生成された.envファイルの内容はログに出力しない
+        # cat .env # デバッグ時のみコメント解除
     
     - name: 既存のコンテナを停止・削除
       run: |
         echo "既存のコンテナを停止中..."
+        # docker compose down は、docker-compose.ymlと同じディレクトリで実行されることを前提としています。
+        # Runnerの作業ディレクトリは自動的にリポジトリのルートになります。
         docker compose down || true
         
         # 未使用のイメージとコンテナを削除
         docker system prune -f || true
     
-    - name: 環境変数ファイルの確認
-      run: |
-        if [ ! -f .env ]; then
-          echo "❌ エラー: .envファイルが見つかりません"
-          echo "📝 .env.exampleを参考に.envファイルを作成してください"
-          echo ""
-          echo "必要な環境変数:"
-          echo "- DISCORD_TOKEN (必須)"
-          echo "- GEMINI_API_KEY (推奨)"
-          echo "- その他の設定項目"
-          echo ""
-          echo "作成方法:"
-          echo "cp .env.example .env"
-          echo "# .envファイルを編集して実際の値を設定"
-          exit 1
-        else
-          echo "✅ .envファイルが見つかりました"
-          
-          # 必須環境変数の確認
-          missing_vars=()
-          
-          if ! grep -q "^DISCORD_TOKEN=" .env || grep -q "^DISCORD_TOKEN=$" .env || grep -q "^DISCORD_TOKEN=your_" .env; then
-            missing_vars+=("DISCORD_TOKEN")
-          fi
-          
-          if [ ${#missing_vars[@]} -gt 0 ]; then
-            echo "❌ エラー: 以下の必須環境変数が設定されていません:"
-            for var in "${missing_vars[@]}"; do
-              echo "  - $var"
-            done
-            echo ""
-            echo ".envファイルを確認して、適切な値を設定してください"
-            exit 1
-          fi
-          
-          echo "✅ 必須環境変数が設定されています"
-        fi
-    
     - name: Dockerイメージをビルド
       run: |
         echo "Dockerイメージをビルド中..."
+        # .envファイルはdocker compose build時に自動的に読み込まれます。
         docker compose build --no-cache
     
     - name: アプリケーションを起動
       run: |
         echo "アプリケーションを起動中..."
+        # .envファイルはdocker compose up時に自動的に読み込まれます。
         docker compose up -d
     
     - name: デプロイ状況を確認
@@ -117,6 +106,7 @@ jobs:
         docker compose ps
         
         echo "ログを確認中..."
+        # weather-bot はあなたのサービス名に置き換えてください
         docker compose logs --tail=20 weather-bot
     
     - name: ヘルスチェック
@@ -126,7 +116,10 @@ jobs:
         attempt=1
         
         while [ $attempt -le $max_attempts ]; do
-          if docker compose ps | grep -q "healthy\|Up"; then
+          # コンテナ名が "weather-bot" であると仮定しています。
+          # 実際のサービス名に合わせて調整してください。
+          # "healthy" ステータスが設定されている場合はそれも確認します。
+          if docker compose ps weather-bot | grep -q "healthy\|Up"; then
             echo "✅ アプリケーションが正常に起動しました！"
             break
           else
