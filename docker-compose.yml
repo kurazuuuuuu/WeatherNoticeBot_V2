@@ -1,0 +1,97 @@
+services:
+  # Discord Weather Bot
+  weather-bot:
+    build: .
+    container_name: discord-weather-bot
+    restart: unless-stopped
+    environment:
+      # Discord設定
+      - DISCORD_TOKEN=${DISCORD_TOKEN}
+      - DISCORD_GUILD_ID=${DISCORD_GUILD_ID:-}
+      
+      # データベース設定
+      - DATABASE_URL=sqlite:///data/weather_bot.db
+      
+      # Google Gemini AI設定
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      
+      # ボット設定
+      - COMMAND_PREFIX=${COMMAND_PREFIX:-/}
+      - DEFAULT_TIMEZONE=${DEFAULT_TIMEZONE:-Asia/Tokyo}
+      
+      # 通知設定
+      - NOTIFICATION_RETRY_ATTEMPTS=${NOTIFICATION_RETRY_ATTEMPTS:-3}
+      - NOTIFICATION_RETRY_DELAY=${NOTIFICATION_RETRY_DELAY:-300}
+      
+      # API制限設定
+      - JMA_API_RATE_LIMIT=${JMA_API_RATE_LIMIT:-60}
+      - GEMINI_API_RATE_LIMIT=${GEMINI_API_RATE_LIMIT:-60}
+      
+      # ログ設定
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - LOG_FILE=weather_bot.log
+    volumes:
+      # データベースファイルの永続化
+      - ./data:/app/data
+      # ログファイルの永続化
+      - ./logs:/app/logs
+    networks:
+      - weather-bot-network
+    depends_on:
+      - db
+    healthcheck:
+      test: ["CMD", "python", "-c", "import asyncio; import aiohttp; print('Bot is healthy')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # PostgreSQL データベース（オプション）
+  db:
+    image: postgres:15-alpine
+    container_name: weather-bot-db
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB:-weather_bot}
+      - POSTGRES_USER=${POSTGRES_USER:-weather_user}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-weather_password}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports:
+      - "5432:5432"
+    networks:
+      - weather-bot-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-weather_user} -d ${POSTGRES_DB:-weather_bot}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis（将来のキャッシュ機能用）
+  redis:
+    image: redis:7-alpine
+    container_name: weather-bot-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    networks:
+      - weather-bot-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  weather-bot-network:
+    driver: bridge
