@@ -15,21 +15,18 @@ jobs:
       with:
         fetch-depth: 0
 
-    - name: 2. Docker環境のセットアップと確認
+    - name: 2. Docker環境の確認 (sudoなし)
       run: |
         echo "🐳 Docker環境を確認します..."
-        # Dockerサービスがアクティブでない場合は開始
-        if ! systemctl is-active --quiet docker; then
-          echo "Dockerサービスを開始します。"
-          sudo systemctl start docker
-        fi
+        # 前提: このワークフローを実行する前に、セルフホステッドランナー上で
+        # Dockerサービスが起動している必要があります。
+        # 事前設定例: `sudo systemctl enable --now docker`
         
         # Dockerコマンドがsudoなしで実行できるかテスト
         if ! docker info > /dev/null 2>&1; then
           echo "⚠️ Dockerコマンドの実行に失敗しました。ランナーのセットアップを確認してください。"
           echo "推奨: ランナーユーザーを 'docker' グループに追加し、再ログインしてください。"
           echo "参考コマンド: sudo usermod -aG docker $(whoami)"
-          # /var/run/docker.sock の権限変更はセキュリティリスクがあるため非推奨
           exit 1
         fi
         
@@ -37,15 +34,20 @@ jobs:
         docker --version
         docker compose version
 
-    - name: 3. ホスト側ボリュームディレクトリの権限設定
+    - name: 3. ホスト側ボリュームディレクトリの確認 (sudoなし)
       run: |
-        echo "📦 ホスト側のボリュームディレクトリの権限を設定します..."
-        # コンテナ内のユーザー(UID:1000, GID:1000)が書き込めるように設定
-        # ディレクトリが存在しない場合は作成
+        echo "📦 ホスト側のボリュームディレクトリの権限を確認します..."
+        # 前提: このワークフローを実行する前に、セルフホステッドランナー上で
+        # ボリュームとして使用するディレクトリの権限が正しく設定されている必要があります。
+        # 権限が正しくないと、コンテナ起動後に書き込みエラーが発生する可能性があります。
+        
+        # ディレクトリが存在しない場合は作成します。
         mkdir -p ./logs ./data
-        sudo chown -R 1000:1000 ./logs ./data
-        sudo chmod -R 775 ./logs ./data
-        echo "✅ ボリュームディレクトリの権限設定が完了しました。"
+        
+        echo "推奨される手動での事前設定コマンド例:"
+        echo "  sudo chown -R 1000:1000 ./logs ./data"
+        echo "  sudo chmod -R 775 ./logs ./data"
+        echo "上記のコマンドは、コンテナ内のユーザー(UID:1000)が書き込みを行えるようにするためのものです。"
 
     - name: 4. 環境変数ファイル (.env) の生成
       run: |
@@ -89,7 +91,7 @@ jobs:
         echo "🚀 アプリケーションをバックグラウンドで起動します..."
         docker compose up -d
     
-    - name: 8. ヘルスチェックによる起動確認 (再修正版)
+    - name: 8. ヘルスチェックによる起動確認
       run: |
         echo "🩺 アプリケーションの起動状態をヘルスチェックで確認します..."
         max_attempts=30
