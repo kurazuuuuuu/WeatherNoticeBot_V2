@@ -1,97 +1,142 @@
-services:
-  # Discord Weather Bot
-  weather-bot:
-    build: .
-    container_name: discord-weather-bot
-    restart: unless-stopped
-    environment:
-      # Discord設定
-      - DISCORD_TOKEN=${DISCORD_TOKEN}
-      - DISCORD_GUILD_ID=${DISCORD_GUILD_ID:-}
-      
-      # データベース設定
-      - DATABASE_URL=sqlite:///data/weather_bot.db
-      
-      # Google Gemini AI設定
-      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
-      
-      # ボット設定
-      - COMMAND_PREFIX=${COMMAND_PREFIX:-/}
-      - DEFAULT_TIMEZONE=${DEFAULT_TIMEZONE:-Asia/Tokyo}
-      
-      # 通知設定
-      - NOTIFICATION_RETRY_ATTEMPTS=${NOTIFICATION_RETRY_ATTEMPTS:-3}
-      - NOTIFICATION_RETRY_DELAY=${NOTIFICATION_RETRY_DELAY:-300}
-      
-      # API制限設定
-      - JMA_API_RATE_LIMIT=${JMA_API_RATE_LIMIT:-60}
-      - GEMINI_API_RATE_LIMIT=${GEMINI_API_RATE_LIMIT:-60}
-      
-      # ログ設定
-      - LOG_LEVEL=${LOG_LEVEL:-INFO}
-      - LOG_FILE=weather_bot.log
-    volumes:
-      # データベースファイルの永続化
-      - ./data:/app/data
-      # ログファイルの永続化
-      - ./logs:/app/logs
-    networks:
-      - weather-bot-network
-    depends_on:
-      - db
-    healthcheck:
-      test: ["CMD", "python", "-c", "import asyncio; import aiohttp; print('Bot is healthy')"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
+name: 自動デプロイ
 
-  # PostgreSQL データベース（オプション）
-  db:
-    image: postgres:15-alpine
-    container_name: weather-bot-db
-    restart: unless-stopped
-    environment:
-      - POSTGRES_DB=${POSTGRES_DB:-weather_bot}
-      - POSTGRES_USER=${POSTGRES_USER:-weather_user}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-weather_password}
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
-    ports:
-      - "5432:5432"
-    networks:
-      - weather-bot-network
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-weather_user} -d ${POSTGRES_DB:-weather_bot}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
 
-  # Redis（将来のキャッシュ機能用）
-  redis:
-    image: redis:7-alpine
-    container_name: weather-bot-redis
-    restart: unless-stopped
-    command: redis-server --appendonly yes
-    volumes:
-      - redis_data:/data
-    ports:
-      - "6379:6379"
-    networks:
-      - weather-bot-network
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+jobs:
+  deploy:
+    runs-on: self-hosted
+    
+    steps:
+    - name: リポジトリをチェックアウト
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    
+    - name: Docker権限とサービス状態の確認
+      run: |
+        echo "現在のユーザー: $(whoami)"
+        echo "ユーザーグループ: $(groups)"
+        
+        # Dockerサービスの状態確認
+        if ! systemctl is-active --quiet docker; then
+          echo "Dockerサービスを開始中..."
+          sudo systemctl start docker
+        fi
+        
+        # Docker接続テスト
+        if ! docker info > /dev/null 2>&1; then
+          echo "Docker権限の問題を検出しました。修正を試行します..."
+          
+          if ! groups | grep -q docker; then
+            sudo usermod -aG docker $(whoami)
+            echo "ユーザーをdockerグループに追加しました"
+          fi
+          
+          if [ ! -w /var/run/docker.sock ]; then
+            sudo chmod 666 /var/run/docker.sock
+            echo "Docker socketの権限を修正しました"
+          fi
+          
+          if ! docker info > /dev/null 2>&1; then
+            echo "❌ Docker権限の問題が解決されませんでした"
+            echo "手動で以下のスクリプトを実行してください: ./scripts/fix-docker-permissions.sh"
+            exit 1
+          fi
+        fi
+        
+        echo "✅ Docker接続が正常です"
+        docker --version
+        docker compose version
 
-volumes:
-  postgres_data:
-    driver: local
-  redis_data:
-    driver: local
+    - name: ホスト側のボリュームディレクトリの権限を修正
+      # Docker Composeのボリュームマウントを使用しているため、
+      # ホスト側のディレクトリの所有者と権限をコンテナ内のユーザーに合わせます。
+      run: |
+        echo "ホスト側のログ/データディレクトリの権限を修正中..."
+        # コンテナ内のbotuserのUID/GIDは1000:1000
+        # デプロイ対象の `./logs` と `./data` ディレクトリが存在することを確認し、所有者を変更
+        mkdir -p ./logs ./data # 存在しない場合に作成
+        sudo chown -R 1000:1000 ./logs ./data # botuserのUID/GIDに合わせて変更
+        sudo chmod -R 775 ./logs ./data # オーナーとグループに書き込み権限を付与
+        echo "✅ ホスト側のボリュームディレクトリの権限が修正されました"
 
-networks:
-  weather-bot-network:
-    driver: bridge
+    - name: 環境変数をシークレットから生成
+      run: |
+        echo "環境変数をシークレットから.envファイルに書き込み中..."
+        cat << EOF > .env
+        DISCORD_TOKEN=${{ secrets.DISCORD_TOKEN }}
+        DISCORD_GUILD_ID=${{ secrets.DISCORD_GUILD_ID }}
+        DATABASE_URL=${{ secrets.DATABASE_URL }}
+        GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
+        COMMAND_PREFIX=${{ secrets.COMMAND_PREFIX }}
+        DEFAULT_TIMEZONE=${{ secrets.DEFAULT_TIMEZONE }}
+        NOTIFICATION_RETRY_ATTEMPTS=${{ secrets.NOTIFICATION_RETRY_ATTEMPTS }}
+        NOTIFICATION_RETRY_DELAY=${{ secrets.NOTIFICATION_RETRY_DELAY }}
+        JMA_API_RATE_LIMIT=${{ secrets.JMA_API_RATE_LIMIT }}
+        GEMINI_API_RATE_LIMIT=${{ secrets.GEMINI_API_RATE_LIMIT }}
+        LOG_LEVEL=${{ secrets.LOG_LEVEL }}
+        LOG_FILE=${{ secrets.LOG_FILE }}
+        POSTGRES_DB=${{ secrets.POSTGRES_DB }}
+        POSTGRES_USER=${{ secrets.POSTGRES_USER }}
+        POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
+        EOF
+        echo "✅ .envファイルが生成されました"
+    
+    - name: 既存のコンテナを停止・削除
+      run: |
+        echo "既存のコンテナを停止中..."
+        docker compose down || true
+        
+        docker system prune -f || true
+    
+    - name: Dockerイメージをビルド
+      run: |
+        echo "Dockerイメージをビルド中..."
+        docker compose build --no-cache
+    
+    - name: アプリケーションを起動
+      run: |
+        echo "アプリケーションを起動中..."
+        docker compose up -d
+    
+    - name: デプロイ状況を確認
+      run: |
+        echo "コンテナの状態を確認中..."
+        sleep 10
+        docker compose ps
+        
+        echo "ログを確認中..."
+        docker compose logs --tail=20 weather-bot
+    
+    - name: ヘルスチェック
+      run: |
+        echo "ヘルスチェックを実行中..."
+        max_attempts=30
+        attempt=1
+        
+        while [ $attempt -le $max_attempts ]; do
+          if docker compose ps weather-bot | grep -q "healthy\|Up"; then
+            echo "✅ アプリケーションが正常に起動しました！"
+            break
+          else
+            echo "⏳ 起動を待機中... ($attempt/$max_attempts)"
+            sleep 10
+            attempt=$((attempt + 1))
+          fi
+        done
+        
+        if [ $attempt -gt $max_attempts ]; then
+          echo "❌ アプリケーションの起動に失敗しました。"
+          docker compose logs weather-bot
+          exit 1
+        fi
+    
+    - name: デプロイ完了通知
+      run: |
+        echo "🎉 デプロイが完了しました！"
+        echo "コミット: ${{ github.sha }}"
+        echo "ブランチ: ${{ github.ref_name }}"
+        echo "時刻: $(date '+%Y-%m-%d %H:%M:%S')"
