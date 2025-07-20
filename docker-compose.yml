@@ -63,30 +63,29 @@ jobs:
         sudo chmod -R 775 ./logs ./data # オーナーとグループに書き込み権限を付与
         echo "✅ ホスト側のボリュームディレクトリの権限が修正されました"
 
-    - name: 環境変数をシークレットから生成
+- name: 環境変数をシークレットから生成
       run: |
         echo "環境変数をシークレットから.envファイルに書き込み中..."
-        # ヒアドキュメントのデリミタ 'EOF' をクォートすることで、
-        # シェルが ${{ secrets.VAR }} を展開しないようにします。
-        # これにより、GitHub Actionsが値を正しく補完できるようになります。
-        cat << 'EOF' > .env
-        DISCORD_TOKEN=${{ secrets.DISCORD_TOKEN }}
-        DISCORD_GUILD_ID=${{ secrets.DISCORD_GUILD_ID }}
-        # DATABASE_URL=${{ secrets.DATABASE_URL }}
-        GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
-        # COMMAND_PREFIX=${{ secrets.COMMAND_PREFIX }}
-        # DEFAULT_TIMEZONE=${{ secrets.DEFAULT_TIMEZONE }}
-        # NOTIFICATION_RETRY_ATTEMPTS=${{ secrets.NOTIFICATION_RETRY_ATTEMPTS }}
-        # NOTIFICATION_RETRY_DELAY=${{ secrets.NOTIFICATION_RETRY_DELAY }}
-        # JMA_API_RATE_LIMIT=${{ secrets.JMA_API_RATE_LIMIT }}
-        # GEMINI_API_RATE_LIMIT=${{ secrets.GEMINI_API_RATE_LIMIT }}
-        # LOG_LEVEL=${{ secrets.LOG_LEVEL }}
-        # LOG_FILE=${{ secrets.LOG_FILE }}
-        # POSTGRES_DB=${{ secrets.POSTGRES_DB }}
-        # POSTGRES_USER=${{ secrets.POSTGRES_USER }}
-        # POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
-        EOF
+        # 既存の.envファイルをクリア
+        > .env
+        # 各シークレットを個別に.envファイルに書き込む
+        echo "DISCORD_TOKEN=${{ secrets.DISCORD_TOKEN }}" >> .env
+        echo "DISCORD_GUILD_ID=${{ secrets.DISCORD_GUILD_ID }}" >> .env
+        # echo "DATABASE_URL=${{ secrets.DATABASE_URL }}" >> .env
+        echo "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}" >> .env
+        # echo "COMMAND_PREFIX=${{ secrets.COMMAND_PREFIX }}" >> .env
+        # echo "DEFAULT_TIMEZONE=${{ secrets.DEFAULT_TIMEZONE }}" >> .env
+        # echo "NOTIFICATION_RETRY_ATTEMPTS=${{ secrets.NOTIFICATION_RETRY_ATTEMPTS }}" >> .env
+        # echo "NOTIFICATION_RETRY_DELAY=${{ secrets.NOTIFICATION_RETRY_DELAY }}" >> .env
+        # echo "JMA_API_RATE_LIMIT=${{ secrets.JMA_API_RATE_LIMIT }}" >> .env
+        # echo "GEMINI_API_RATE_LIMIT=${{ secrets.GEMINI_API_RATE_LIMIT }}" >> .env
+        # echo "LOG_LEVEL=${{ secrets.LOG_LEVEL }}" >> .env
+        # echo "LOG_FILE=${{ secrets.LOG_FILE }}" >> .env
+        # echo "POSTGRES_DB=${{ secrets.POSTGRES_DB }}" >> .env
+        # echo "POSTGRES_USER=${{ secrets.POSTGRES_USER }}" >> .env
+        # echo "POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}" >> .env
         echo "✅ .envファイルが生成されました"
+
     
     - name: 既存のコンテナを停止・削除
       run: |
