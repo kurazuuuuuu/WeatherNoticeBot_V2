@@ -1,3 +1,5 @@
+# .github/workflows/deploy.yml
+
 name: 自動デプロイ
 
 on:
@@ -59,7 +61,8 @@ jobs:
         interval=10
         
         for i in $(seq 1 $max_attempts); do
-          health_status=$(docker inspect --format '{{.State.Health.Status}}' weather-bot 2>/dev/null)
+          # docker-compose.yml内のサービス名を指定
+          health_status=$(docker inspect --format '{{.State.Health.Status}}' discord-weather-bot 2>/dev/null)
           
           if [ "$health_status" = "healthy" ]; then
             echo "✅ アプリケーションは正常に起動しました！"
@@ -67,10 +70,10 @@ jobs:
             break
           fi
           
-          container_state=$(docker inspect --format '{{.State.Status}}' weather-bot 2>/dev/null)
+          container_state=$(docker inspect --format '{{.State.Status}}' discord-weather-bot 2>/dev/null)
           if [ "$container_state" != "running" ]; then
              echo "❌ コンテナが起動していません。"
-             docker compose logs weather-bot
+             docker compose logs
              exit 1
           fi
 
@@ -80,7 +83,7 @@ jobs:
         
         if [ "$health_status" != "healthy" ]; then
           echo "❌ アプリケーションの起動に失敗しました。"
-          docker compose logs weather-bot
+          docker compose logs
           exit 1
         fi
     

@@ -1,144 +1,97 @@
-name: 自動デプロイ
+services:
+  # Discord Weather Bot
+  weather-bot:
+    build: .
+    container_name: discord-weather-bot
+    restart: unless-stopped
+    environment:
+      # Discord設定
+      - DISCORD_TOKEN=${DISCORD_TOKEN}
+      - DISCORD_GUILD_ID=${DISCORD_GUILD_ID:-}
+      
+      # データベース設定
+      - DATABASE_URL=sqlite:///data/weather_bot.db
+      
+      # Google Gemini AI設定
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      
+      # ボット設定
+      - COMMAND_PREFIX=${COMMAND_PREFIX:-/}
+      - DEFAULT_TIMEZONE=${DEFAULT_TIMEZONE:-Asia/Tokyo}
+      
+      # 通知設定
+      - NOTIFICATION_RETRY_ATTEMPTS=${NOTIFICATION_RETRY_ATTEMPTS:-3}
+      - NOTIFICATION_RETRY_DELAY=${NOTIFICATION_RETRY_DELAY:-300}
+      
+      # API制限設定
+      - JMA_API_RATE_LIMIT=${JMA_API_RATE_LIMIT:-60}
+      - GEMINI_API_RATE_LIMIT=${GEMINI_API_RATE_LIMIT:-60}
+      
+      # ログ設定
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - LOG_FILE=weather_bot.log
+    volumes:
+      # データベースファイルの永続化
+      - ./data:/app/data
+      # ログファイルの永続化
+      - ./logs:/app/logs
+    networks:
+      - weather-bot-network
+    depends_on:
+      - db
+    healthcheck:
+      test: ["CMD", "python", "-c", "import asyncio; import aiohttp; print('Bot is healthy')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
-on:
-  push:
-    branches: [ main ]
-  workflow_dispatch:
+  # PostgreSQL データベース（オプション）
+  db:
+    image: postgres:15-alpine
+    container_name: weather-bot-db
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB:-weather_bot}
+      - POSTGRES_USER=${POSTGRES_USER:-weather_user}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-weather_password}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports:
+      - "5432:5432"
+    networks:
+      - weather-bot-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-weather_user} -d ${POSTGRES_DB:-weather_bot}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
-jobs:
-  deploy:
-    runs-on: self-hosted
-    
-    steps:
-    - name: 1. リポジトリをチェックアウト
-      uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
+  # Redis（将来のキャッシュ機能用）
+  redis:
+    image: redis:7-alpine
+    container_name: weather-bot-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    networks:
+      - weather-bot-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
-    - name: 2. Docker環境のセットアップと確認
-      run: |
-        echo "🐳 Docker環境を確認します..."
-        # Dockerサービスがアクティブでない場合は開始
-        if ! systemctl is-active --quiet docker; then
-          echo "Dockerサービスを開始します。"
-          sudo systemctl start docker
-        fi
-        
-        # Dockerコマンドがsudoなしで実行できるかテスト
-        if ! docker info > /dev/null 2>&1; then
-          echo "⚠️ Dockerコマンドの実行に失敗しました。ランナーのセットアップを確認してください。"
-          echo "推奨: ランナーユーザーを 'docker' グループに追加し、再ログインしてください。"
-          echo "参考コマンド: sudo usermod -aG docker $(whoami)"
-          # /var/run/docker.sock の権限変更はセキュリティリスクがあるため非推奨
-          exit 1
-        fi
-        
-        echo "✅ Dockerは正常に動作しています。"
-        docker --version
-        docker compose version
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
 
-    - name: 3. ホスト側ボリュームディレクトリの権限設定
-      run: |
-        echo "📦 ホスト側のボリュームディレクトリの権限を設定します..."
-        # コンテナ内のユーザー(UID:1000, GID:1000)が書き込めるように設定
-        # ディレクトリが存在しない場合は作成
-        mkdir -p ./logs ./data
-        sudo chown -R 1000:1000 ./logs ./data
-        sudo chmod -R 775 ./logs ./data
-        echo "✅ ボリュームディレクトリの権限設定が完了しました。"
-
-    - name: 4. 環境変数ファイル (.env) の生成
-      run: |
-        echo "🔑 シークレットから .env ファイルを生成します..."
-        # heredocを使用して、よりクリーンにファイルを生成
-        cat << EOF > .env
-        DISCORD_TOKEN=${{ secrets.DISCORD_TOKEN }}
-        DISCORD_GUILD_ID=${{ secrets.DISCORD_GUILD_ID }}
-        GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
-        # --- 必要に応じて以下のコメントを解除してください ---
-        # DATABASE_URL=${{ secrets.DATABASE_URL }}
-        # COMMAND_PREFIX=${{ secrets.COMMAND_PREFIX }}
-        # DEFAULT_TIMEZONE=${{ secrets.DEFAULT_TIMEZONE }}
-        # NOTIFICATION_RETRY_ATTEMPTS=${{ secrets.NOTIFICATION_RETRY_ATTEMPTS }}
-        # NOTIFICATION_RETRY_DELAY=${{ secrets.NOTIFICATION_RETRY_DELAY }}
-        # JMA_API_RATE_LIMIT=${{ secrets.JMA_API_RATE_LIMIT }}
-        # GEMINI_API_RATE_LIMIT=${{ secrets.GEMINI_API_RATE_LIMIT }}
-        # LOG_LEVEL=${{ secrets.LOG_LEVEL }}
-        # LOG_FILE=${{ secrets.LOG_FILE }}
-        # POSTGRES_DB=${{ secrets.POSTGRES_DB }}
-        # POSTGRES_USER=${{ secrets.POSTGRES_USER }}
-        # POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
-        EOF
-        echo "✅ .env ファイルが正常に生成されました。"
-
-    - name: 5. 既存のコンテナを停止・削除
-      run: |
-        echo "🧹 既存のコンテナを停止・削除します..."
-        # --remove-orphans で、docker-compose.yml に定義されなくなったコンテナも削除
-        docker compose down --remove-orphans
-    
-    - name: 6. Dockerイメージをビルド
-      run: |
-        echo "🛠️ Dockerイメージをビルドします (キャッシュを活用)..."
-        # --no-cache は削除し、Dockerのキャッシュ機能を最大限に活用
-        # これにより、変更がない部分の再ビルドをスキップし、時間を大幅に短縮
-        docker compose build
-    
-    - name: 7. アプリケーションを起動
-      run: |
-        echo "🚀 アプリケーションをバックグラウンドで起動します..."
-        docker compose up -d
-    
-    - name: 8. ヘルスチェックによる起動確認 (修正版)
-      run: |
-        echo "🩺 アプリケーションの起動状態をヘルスチェックで確認します..."
-        max_attempts=30
-        interval=10 # 秒
-        
-        for i in $(seq 1 $max_attempts); do
-          # docker inspect から直接ヘルスステータスを取得。コンテナが存在しない場合も考慮。
-          health_status=$(docker inspect --format '{{.State.Health.Status}}' weather-bot 2>/dev/null)
-          
-          if [ "$health_status" = "healthy" ]; then
-            echo "✅ (試行 $i/$max_attempts) アプリケーションは正常に起動しました！(Status: $health_status)"
-            docker compose ps
-            echo "--- 直近のログ ---"
-            docker compose logs --tail=50 weather-bot
-            break
-          fi
-          
-          # コンテナが起動していない場合はエラー
-          container_state=$(docker inspect --format '{{.State.Status}}' weather-bot 2>/dev/null)
-          if [ "$container_state" != "running" ]; then
-             echo "❌ (試行 $i/$max_attempts) コンテナが起動していません (State: ${container_state:-'not found'})。"
-             docker compose logs weather-bot
-             exit 1
-          fi
-
-          # 表示用のステータスを設定 (エラーの原因となる ${...:-...} 構文を回避)
-          display_status=$health_status
-          if [ -z "$health_status" ]; then
-            display_status="starting"
-          fi
-
-          echo "⏳ (試行 $i/$max_attempts) 起動を待機中... (Status: $display_status, Interval: ${interval}s)"
-          sleep $interval
-        done
-        
-        # ループ終了後、最終確認
-        if [ "$health_status" != "healthy" ]; then
-          echo "❌ アプリケーションの起動に失敗しました。"
-          docker compose ps
-          echo "--- 最終ログ ---"
-          docker compose logs weather-bot
-          exit 1
-        fi
-    
-    - name: 9. デプロイ完了通知
-      run: |
-        echo "🎉 デプロイが正常に完了しました！"
-        echo "------------------------------------"
-        echo "  Commit: ${{ github.sha }}"
-        echo "  Branch: ${{ github.ref_name }}"
-        echo "  Time:   $(date '+%Y-%m-%d %H:%M:%S')"
-        echo "------------------------------------"
+networks:
+  weather-bot-network:
+    driver: bridge
