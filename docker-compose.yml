@@ -10,135 +10,128 @@ jobs:
     runs-on: self-hosted
     
     steps:
-    - name: リポジトリをチェックアウト
+    - name: 1. リポジトリをチェックアウト
       uses: actions/checkout@v4
       with:
         fetch-depth: 0
-    
-    - name: Docker権限とサービス状態の確認
+
+    - name: 2. Docker環境のセットアップと確認
       run: |
-        echo "現在のユーザー: $(whoami)"
-        echo "ユーザーグループ: $(groups)"
-        
-        # Dockerサービスの状態確認
+        echo "🐳 Docker環境を確認します..."
+        # Dockerサービスがアクティブでない場合は開始
         if ! systemctl is-active --quiet docker; then
-          echo "Dockerサービスを開始中..."
+          echo "Dockerサービスを開始します。"
           sudo systemctl start docker
         fi
         
-        # Docker接続テスト
+        # Dockerコマンドがsudoなしで実行できるかテスト
         if ! docker info > /dev/null 2>&1; then
-          echo "Docker権限の問題を検出しました。修正を試行します..."
-          
-          if ! groups | grep -q docker; then
-            sudo usermod -aG docker $(whoami)
-            echo "ユーザーをdockerグループに追加しました"
-          fi
-          
-          if [ ! -w /var/run/docker.sock ]; then
-            sudo chmod 666 /var/run/docker.sock
-            echo "Docker socketの権限を修正しました"
-          fi
-          
-          if ! docker info > /dev/null 2>&1; then
-            echo "❌ Docker権限の問題が解決されませんでした"
-            echo "手動で以下のスクリプトを実行してください: ./scripts/fix-docker-permissions.sh"
-            exit 1
-          fi
+          echo "⚠️ Dockerコマンドの実行に失敗しました。ランナーのセットアップを確認してください。"
+          echo "推奨: ランナーユーザーを 'docker' グループに追加し、再ログインしてください。"
+          echo "参考コマンド: sudo usermod -aG docker $(whoami)"
+          # /var/run/docker.sock の権限変更はセキュリティリスクがあるため非推奨
+          exit 1
         fi
         
-        echo "✅ Docker接続が正常です"
+        echo "✅ Dockerは正常に動作しています。"
         docker --version
         docker compose version
 
-    - name: ホスト側のボリュームディレクトリの権限を修正
-      # Docker Composeのボリュームマウントを使用しているため、
-      # ホスト側のディレクトリの所有者と権限をコンテナ内のユーザーに合わせます。
+    - name: 3. ホスト側ボリュームディレクトリの権限設定
       run: |
-        echo "ホスト側のログ/データディレクトリの権限を修正中..."
-        # コンテナ内のbotuserのUID/GIDは1000:1000
-        # デプロイ対象の `./logs` と `./data` ディレクトリが存在することを確認し、所有者を変更
-        mkdir -p ./logs ./data # 存在しない場合に作成
-        sudo chown -R 1000:1000 ./logs ./data # botuserのUID/GIDに合わせて変更
-        sudo chmod -R 775 ./logs ./data # オーナーとグループに書き込み権限を付与
-        echo "✅ ホスト側のボリュームディレクトリの権限が修正されました"
+        echo "📦 ホスト側のボリュームディレクトリの権限を設定します..."
+        # コンテナ内のユーザー(UID:1000, GID:1000)が書き込めるように設定
+        # ディレクトリが存在しない場合は作成
+        mkdir -p ./logs ./data
+        sudo chown -R 1000:1000 ./logs ./data
+        sudo chmod -R 775 ./logs ./data
+        echo "✅ ボリュームディレクトリの権限設定が完了しました。"
 
-- name: 環境変数をシークレットから生成
+    - name: 4. 環境変数ファイル (.env) の生成
       run: |
-        echo "環境変数をシークレットから.envファイルに書き込み中..."
-        # 既存の.envファイルをクリア
-        > .env
-        # 各シークレットを個別に.envファイルに書き込む
-        echo "DISCORD_TOKEN=${{ secrets.DISCORD_TOKEN }}" >> .env
-        echo "DISCORD_GUILD_ID=${{ secrets.DISCORD_GUILD_ID }}" >> .env
-        # echo "DATABASE_URL=${{ secrets.DATABASE_URL }}" >> .env
-        echo "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}" >> .env
-        # echo "COMMAND_PREFIX=${{ secrets.COMMAND_PREFIX }}" >> .env
-        # echo "DEFAULT_TIMEZONE=${{ secrets.DEFAULT_TIMEZONE }}" >> .env
-        # echo "NOTIFICATION_RETRY_ATTEMPTS=${{ secrets.NOTIFICATION_RETRY_ATTEMPTS }}" >> .env
-        # echo "NOTIFICATION_RETRY_DELAY=${{ secrets.NOTIFICATION_RETRY_DELAY }}" >> .env
-        # echo "JMA_API_RATE_LIMIT=${{ secrets.JMA_API_RATE_LIMIT }}" >> .env
-        # echo "GEMINI_API_RATE_LIMIT=${{ secrets.GEMINI_API_RATE_LIMIT }}" >> .env
-        # echo "LOG_LEVEL=${{ secrets.LOG_LEVEL }}" >> .env
-        # echo "LOG_FILE=${{ secrets.LOG_FILE }}" >> .env
-        # echo "POSTGRES_DB=${{ secrets.POSTGRES_DB }}" >> .env
-        # echo "POSTGRES_USER=${{ secrets.POSTGRES_USER }}" >> .env
-        # echo "POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}" >> .env
-        echo "✅ .envファイルが生成されました"
+        echo "🔑 シークレットから .env ファイルを生成します..."
+        # heredocを使用して、よりクリーンにファイルを生成
+        cat << EOF > .env
+        DISCORD_TOKEN=${{ secrets.DISCORD_TOKEN }}
+        DISCORD_GUILD_ID=${{ secrets.DISCORD_GUILD_ID }}
+        GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
+        # --- 必要に応じて以下のコメントを解除してください ---
+        # DATABASE_URL=${{ secrets.DATABASE_URL }}
+        # COMMAND_PREFIX=${{ secrets.COMMAND_PREFIX }}
+        # DEFAULT_TIMEZONE=${{ secrets.DEFAULT_TIMEZONE }}
+        # NOTIFICATION_RETRY_ATTEMPTS=${{ secrets.NOTIFICATION_RETRY_ATTEMPTS }}
+        # NOTIFICATION_RETRY_DELAY=${{ secrets.NOTIFICATION_RETRY_DELAY }}
+        # JMA_API_RATE_LIMIT=${{ secrets.JMA_API_RATE_LIMIT }}
+        # GEMINI_API_RATE_LIMIT=${{ secrets.GEMINI_API_RATE_LIMIT }}
+        # LOG_LEVEL=${{ secrets.LOG_LEVEL }}
+        # LOG_FILE=${{ secrets.LOG_FILE }}
+        # POSTGRES_DB=${{ secrets.POSTGRES_DB }}
+        # POSTGRES_USER=${{ secrets.POSTGRES_USER }}
+        # POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
+        EOF
+        echo "✅ .env ファイルが正常に生成されました。"
 
-    
-    - name: 既存のコンテナを停止・削除
+    - name: 5. 既存のコンテナを停止・削除
       run: |
-        echo "既存のコンテナを停止中..."
-        docker compose down || true
-        
-        docker system prune -f || true
+        echo "🧹 既存のコンテナを停止・削除します..."
+        # --remove-orphans で、docker-compose.yml に定義されなくなったコンテナも削除
+        docker compose down --remove-orphans
     
-    - name: Dockerイメージをビルド
+    - name: 6. Dockerイメージをビルド
       run: |
-        echo "Dockerイメージをビルド中..."
-        docker compose build --no-cache
+        echo "🛠️ Dockerイメージをビルドします (キャッシュを活用)..."
+        # --no-cache は削除し、Dockerのキャッシュ機能を最大限に活用
+        # これにより、変更がない部分の再ビルドをスキップし、時間を大幅に短縮
+        docker compose build
     
-    - name: アプリケーションを起動
+    - name: 7. アプリケーションを起動
       run: |
-        echo "アプリケーションを起動中..."
+        echo "🚀 アプリケーションをバックグラウンドで起動します..."
         docker compose up -d
     
-    - name: デプロイ状況を確認
+    - name: 8. ヘルスチェックによる起動確認
       run: |
-        echo "コンテナの状態を確認中..."
-        sleep 10
-        docker compose ps
-        
-        echo "ログを確認中..."
-        docker compose logs --tail=20 weather-bot
-    
-    - name: ヘルスチェック
-      run: |
-        echo "ヘルスチェックを実行中..."
+        echo "🩺 アプリケーションの起動状態をヘルスチェックで確認します..."
         max_attempts=30
-        attempt=1
+        interval=10 # 秒
         
-        while [ $attempt -le $max_attempts ]; do
-          if docker compose ps weather-bot | grep -q "healthy\|Up"; then
-            echo "✅ アプリケーションが正常に起動しました！"
+        for i in $(seq 1 $max_attempts); do
+          # docker inspect から直接ヘルスステータスを取得する、より確実な方法
+          health_status=$(docker inspect --format '{{.State.Health.Status}}' weather-bot 2>/dev/null)
+          
+          if [ "$health_status" = "healthy" ]; then
+            echo "✅ (試行 $i/$max_attempts) アプリケーションは正常に起動しました！(Status: $health_status)"
+            docker compose ps
+            echo "--- 直近のログ ---"
+            docker compose logs --tail=50 weather-bot
             break
-          else
-            echo "⏳ 起動を待機中... ($attempt/$max_attempts)"
-            sleep 10
-            attempt=$((attempt + 1))
           fi
+          
+          # コンテナが起動していない、またはヘルスチェック中の場合
+          container_state=$(docker inspect --format '{{.State.Status}}' weather-bot 2>/dev/null)
+          if [ "$container_state" != "running" ]; then
+             echo "❌ (試行 $i/$max_attempts) コンテナが起動していません (State: $container_state)。"
+             docker compose logs weather-bot
+             exit 1
+          fi
+
+          echo "⏳ (試行 $i/$max_attempts) 起動を待機中... (Status: ${health_status:-"starting"}, Interval: ${interval}s)"
+          sleep $interval
         done
         
-        if [ $attempt -gt $max_attempts ]; then
+        if [ "$health_status" != "healthy" ]; then
           echo "❌ アプリケーションの起動に失敗しました。"
+          docker compose ps
+          echo "--- 最終ログ ---"
           docker compose logs weather-bot
           exit 1
         fi
     
-    - name: デプロイ完了通知
+    - name: 9. デプロイ完了通知
       run: |
-        echo "🎉 デプロイが完了しました！"
-        echo "コミット: ${{ github.sha }}"
-        echo "ブランチ: ${{ github.ref_name }}"
-        echo "時刻: $(date '+%Y-%m-%d %H:%M:%S')"
+        echo "🎉 デプロイが正常に完了しました！"
+        echo "------------------------------------"
+        echo "  Commit: ${{ github.sha }}"
+        echo "  Branch: ${{ github.ref_name }}"
+        echo "  Time:   $(date '+%Y-%m-%d %H:%M:%S')"
+        echo "------------------------------------"
