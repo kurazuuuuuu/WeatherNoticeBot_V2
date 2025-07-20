@@ -69,19 +69,19 @@ jobs:
         cat << EOF > .env
         DISCORD_TOKEN=${{ secrets.DISCORD_TOKEN }}
         DISCORD_GUILD_ID=${{ secrets.DISCORD_GUILD_ID }}
-        DATABASE_URL=${{ secrets.DATABASE_URL }}
+        # DATABASE_URL=${{ secrets.DATABASE_URL }}
         GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
-        COMMAND_PREFIX=${{ secrets.COMMAND_PREFIX }}
-        DEFAULT_TIMEZONE=${{ secrets.DEFAULT_TIMEZONE }}
-        NOTIFICATION_RETRY_ATTEMPTS=${{ secrets.NOTIFICATION_RETRY_ATTEMPTS }}
-        NOTIFICATION_RETRY_DELAY=${{ secrets.NOTIFICATION_RETRY_DELAY }}
-        JMA_API_RATE_LIMIT=${{ secrets.JMA_API_RATE_LIMIT }}
-        GEMINI_API_RATE_LIMIT=${{ secrets.GEMINI_API_RATE_LIMIT }}
-        LOG_LEVEL=${{ secrets.LOG_LEVEL }}
-        LOG_FILE=${{ secrets.LOG_FILE }}
-        POSTGRES_DB=${{ secrets.POSTGRES_DB }}
-        POSTGRES_USER=${{ secrets.POSTGRES_USER }}
-        POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
+        # COMMAND_PREFIX=${{ secrets.COMMAND_PREFIX }}
+        # DEFAULT_TIMEZONE=${{ secrets.DEFAULT_TIMEZONE }}
+        # NOTIFICATION_RETRY_ATTEMPTS=${{ secrets.NOTIFICATION_RETRY_ATTEMPTS }}
+        # NOTIFICATION_RETRY_DELAY=${{ secrets.NOTIFICATION_RETRY_DELAY }}
+        # JMA_API_RATE_LIMIT=${{ secrets.JMA_API_RATE_LIMIT }}
+        # GEMINI_API_RATE_LIMIT=${{ secrets.GEMINI_API_RATE_LIMIT }}
+        # LOG_LEVEL=${{ secrets.LOG_LEVEL }}
+        # LOG_FILE=${{ secrets.LOG_FILE }}
+        # POSTGRES_DB=${{ secrets.POSTGRES_DB }}
+        # POSTGRES_USER=${{ secrets.POSTGRES_USER }}
+        # POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
         EOF
         echo "✅ .envファイルが生成されました"
     
