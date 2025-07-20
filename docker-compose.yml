@@ -66,7 +66,10 @@ jobs:
     - name: 環境変数をシークレットから生成
       run: |
         echo "環境変数をシークレットから.envファイルに書き込み中..."
-        cat << EOF > .env
+        # ヒアドキュメントのデリミタ 'EOF' をクォートすることで、
+        # シェルが ${{ secrets.VAR }} を展開しないようにします。
+        # これにより、GitHub Actionsが値を正しく補完できるようになります。
+        cat << 'EOF' > .env
         DISCORD_TOKEN=${{ secrets.DISCORD_TOKEN }}
         DISCORD_GUILD_ID=${{ secrets.DISCORD_GUILD_ID }}
         # DATABASE_URL=${{ secrets.DATABASE_URL }}
