@@ -413,6 +413,33 @@ class UserService:
             logger.error(f"全ユーザー取得時の予期しないエラー: {e}")
             return []
     
+    async def get_users_with_notifications_enabled(self) -> List[User]:
+        """
+        通知が有効で通知時間が設定されているユーザーを取得する
+        
+        Returns:
+            通知が有効なユーザーのリスト
+        """
+        try:
+            async with get_db_session() as session:
+                stmt = select(User).where(
+                    User.is_notification_enabled == True,
+                    User.notification_hour.is_not(None)
+                )
+                
+                result = await session.execute(stmt)
+                users = result.scalars().all()
+                
+                logger.debug(f"通知有効ユーザーを取得しました: {len(users)}人")
+                return list(users)
+                
+        except SQLAlchemyError as e:
+            logger.error(f"通知有効ユーザー取得時のデータベースエラー: {e}")
+            return []
+        except Exception as e:
+            logger.error(f"通知有効ユーザー取得時の予期しないエラー: {e}")
+            return []
+    
     async def get_user_count(self) -> int:
         """
         ユーザー数を取得する
