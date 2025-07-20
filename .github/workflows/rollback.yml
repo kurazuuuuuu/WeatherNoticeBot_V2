@@ -4,93 +4,93 @@ on:
   workflow_dispatch:
     inputs:
       commit_sha:
-        description: 'ロールバック先のコミットSHA（省略時は直前のコミット）'
+        description: "ロールバック先のコミットSHA（省略時は直前のコミット）"
         required: false
         type: string
 
 jobs:
   rollback:
     runs-on: self-hosted
-    
+
     steps:
-    - name: リポジトリをチェックアウト
-      uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
-    
-    - name: ロールバック先のコミットを決定
-      id: target
-      run: |
-        if [ -n "${{ github.event.inputs.commit_sha }}" ]; then
-          TARGET_SHA="${{ github.event.inputs.commit_sha }}"
-        else
-          # 直前のコミットを取得
-          TARGET_SHA=$(git rev-parse HEAD~1)
-        fi
-        
-        echo "target_sha=$TARGET_SHA" >> $GITHUB_OUTPUT
-        echo "ロールバック先: $TARGET_SHA"
-        
-        # コミット情報を表示
-        git log --oneline -1 $TARGET_SHA
-    
-    - name: 指定されたコミットにチェックアウト
-      run: |
-        echo "コミット ${{ steps.target.outputs.target_sha }} にロールバック中..."
-        git checkout ${{ steps.target.outputs.target_sha }}
-    
-    - name: 既存のコンテナを停止・削除
-      run: |
-        echo "既存のコンテナを停止中..."
-        docker compose down || true
-        
-        # 未使用のイメージとコンテナを削除
-        docker system prune -f || true
-    
-    - name: Dockerイメージをビルド
-      run: |
-        echo "Dockerイメージをビルド中..."
-        docker compose build --no-cache
-    
-    - name: アプリケーションを起動
-      run: |
-        echo "アプリケーションを起動中..."
-        docker compose up -d
-    
-    - name: ロールバック状況を確認
-      run: |
-        echo "コンテナの状態を確認中..."
-        sleep 10
-        docker compose ps
-        
-        echo "ログを確認中..."
-        docker compose logs --tail=20 weather-bot
-    
-    - name: ヘルスチェック
-      run: |
-        echo "ヘルスチェックを実行中..."
-        max_attempts=30
-        attempt=1
-        
-        while [ $attempt -le $max_attempts ]; do
-          if docker compose ps | grep -q "healthy\|Up"; then
-            echo "✅ ロールバックが正常に完了しました！"
-            break
+      - name: リポジトリをチェックアウト
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: ロールバック先のコミットを決定
+        id: target
+        run: |
+          if [ -n "${{ github.event.inputs.commit_sha }}" ]; then
+            TARGET_SHA="${{ github.event.inputs.commit_sha }}"
           else
-            echo "⏳ 起動を待機中... ($attempt/$max_attempts)"
-            sleep 10
-            attempt=$((attempt + 1))
+            # 直前のコミットを取得
+            TARGET_SHA=$(git rev-parse HEAD~1)
           fi
-        done
-        
-        if [ $attempt -gt $max_attempts ]; then
-          echo "❌ ロールバック後のアプリケーション起動に失敗しました。"
-          docker compose logs weather-bot
-          exit 1
-        fi
-    
-    - name: ロールバック完了通知
-      run: |
-        echo "🔄 ロールバックが完了しました！"
-        echo "ロールバック先コミット: ${{ steps.target.outputs.target_sha }}"
-        echo "時刻: $(date '+%Y-%m-%d %H:%M:%S')"
+
+          echo "target_sha=$TARGET_SHA" >> $GITHUB_OUTPUT
+          echo "ロールバック先: $TARGET_SHA"
+
+          # コミット情報を表示
+          git log --oneline -1 $TARGET_SHA
+
+      - name: 指定されたコミットにチェックアウト
+        run: |
+          echo "コミット ${{ steps.target.outputs.target_sha }} にロールバック中..."
+          git checkout ${{ steps.target.outputs.target_sha }}
+
+      - name: 既存のコンテナを停止・削除
+        run: |
+          echo "既存のコンテナを停止中..."
+          docker compose down || true
+
+          # 未使用のイメージとコンテナを削除
+          docker system prune -f || true
+
+      - name: Dockerイメージをビルド
+        run: |
+          echo "Dockerイメージをビルド中..."
+          docker compose build --no-cache
+
+      - name: アプリケーションを起動
+        run: |
+          echo "アプリケーションを起動中..."
+          docker compose up -d
+
+      - name: ロールバック状況を確認
+        run: |
+          echo "コンテナの状態を確認中..."
+          sleep 10
+          docker compose ps
+
+          echo "ログを確認中..."
+          docker compose logs --tail=20 weather-bot
+
+      - name: ヘルスチェック
+        run: |
+          echo "ヘルスチェックを実行中..."
+          max_attempts=30
+          attempt=1
+
+          while [ $attempt -le $max_attempts ]; do
+            if docker compose ps | grep -q "healthy\|Up"; then
+              echo "✅ ロールバックが正常に完了しました！"
+              break
+            else
+              echo "⏳ 起動を待機中... ($attempt/$max_attempts)"
+              sleep 10
+              attempt=$((attempt + 1))
+            fi
+          done
+
+          if [ $attempt -gt $max_attempts ]; then
+            echo "❌ ロールバック後のアプリケーション起動に失敗しました。"
+            docker compose logs weather-bot
+            exit 1
+          fi
+
+      - name: ロールバック完了通知
+        run: |
+          echo "🔄 ロールバックが完了しました！"
+          echo "ロールバック先コミット: ${{ steps.target.outputs.target_sha }}"
+          echo "時刻: $(date '+%Y-%m-%d %H:%M:%S')"
