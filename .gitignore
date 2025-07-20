@@ -211,5 +211,3 @@ weather_bot.db
 weather_bot.db-journal
 logs/
 *.log
-
-.kiro
