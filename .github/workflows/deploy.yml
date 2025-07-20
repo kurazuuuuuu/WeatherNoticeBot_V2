@@ -1,0 +1,82 @@
+name: 自動デプロイ
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+    
+    steps:
+    - name: リポジトリをチェックアウト
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    
+    - name: 既存のコンテナを停止・削除
+      run: |
+        echo "既存のコンテナを停止中..."
+        docker compose down || true
+        
+        # 未使用のイメージとコンテナを削除
+        docker system prune -f || true
+    
+    - name: 環境変数ファイルの確認
+      run: |
+        if [ ! -f .env ]; then
+          echo "警告: .envファイルが見つかりません。.env.exampleを参考に作成してください。"
+          echo "デプロイを続行しますが、環境変数が正しく設定されていることを確認してください。"
+        else
+          echo ".envファイルが見つかりました。"
+        fi
+    
+    - name: Dockerイメージをビルド
+      run: |
+        echo "Dockerイメージをビルド中..."
+        docker compose build --no-cache
+    
+    - name: アプリケーションを起動
+      run: |
+        echo "アプリケーションを起動中..."
+        docker compose up -d
+    
+    - name: デプロイ状況を確認
+      run: |
+        echo "コンテナの状態を確認中..."
+        sleep 10
+        docker compose ps
+        
+        echo "ログを確認中..."
+        docker compose logs --tail=20 weather-bot
+    
+    - name: ヘルスチェック
+      run: |
+        echo "ヘルスチェックを実行中..."
+        max_attempts=30
+        attempt=1
+        
+        while [ $attempt -le $max_attempts ]; do
+          if docker compose ps | grep -q "healthy\|Up"; then
+            echo "✅ アプリケーションが正常に起動しました！"
+            break
+          else
+            echo "⏳ 起動を待機中... ($attempt/$max_attempts)"
+            sleep 10
+            attempt=$((attempt + 1))
+          fi
+        done
+        
+        if [ $attempt -gt $max_attempts ]; then
+          echo "❌ アプリケーションの起動に失敗しました。"
+          docker compose logs weather-bot
+          exit 1
+        fi
+    
+    - name: デプロイ完了通知
+      run: |
+        echo "🎉 デプロイが完了しました！"
+        echo "コミット: ${{ github.sha }}"
+        echo "ブランチ: ${{ github.ref_name }}"
+        echo "時刻: $(date '+%Y-%m-%d %H:%M:%S')"
