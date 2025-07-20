@@ -44,8 +44,8 @@
   - ユーザー設定の表示機能
   - _Requirements: 5.1, 5.3_
 
-- [ ] 5. Google Gemini AI統合の実装
-- [ ] 5.1 AIメッセージ生成サービス
+- [x] 5. Google Gemini AI統合の実装
+- [x] 5.1 AIメッセージ生成サービス
   - Google Gemini APIクライアントの実装
   - 天気情報に基づくポジティブメッセージ生成
   - APIエラー時のフォールバック機能
