@@ -89,14 +89,14 @@ jobs:
         echo "🚀 アプリケーションをバックグラウンドで起動します..."
         docker compose up -d
     
-    - name: 8. ヘルスチェックによる起動確認
+    - name: 8. ヘルスチェックによる起動確認 (修正版)
       run: |
         echo "🩺 アプリケーションの起動状態をヘルスチェックで確認します..."
         max_attempts=30
         interval=10 # 秒
         
         for i in $(seq 1 $max_attempts); do
-          # docker inspect から直接ヘルスステータスを取得する、より確実な方法
+          # docker inspect から直接ヘルスステータスを取得。コンテナが存在しない場合も考慮。
           health_status=$(docker inspect --format '{{.State.Health.Status}}' weather-bot 2>/dev/null)
           
           if [ "$health_status" = "healthy" ]; then
@@ -107,18 +107,25 @@ jobs:
             break
           fi
           
-          # コンテナが起動していない、またはヘルスチェック中の場合
+          # コンテナが起動していない場合はエラー
           container_state=$(docker inspect --format '{{.State.Status}}' weather-bot 2>/dev/null)
           if [ "$container_state" != "running" ]; then
-             echo "❌ (試行 $i/$max_attempts) コンテナが起動していません (State: $container_state)。"
+             echo "❌ (試行 $i/$max_attempts) コンテナが起動していません (State: ${container_state:-'not found'})。"
              docker compose logs weather-bot
              exit 1
           fi
 
-          echo "⏳ (試行 $i/$max_attempts) 起動を待機中... (Status: ${health_status:-"starting"}, Interval: ${interval}s)"
+          # 表示用のステータスを設定 (エラーの原因となる ${...:-...} 構文を回避)
+          display_status=$health_status
+          if [ -z "$health_status" ]; then
+            display_status="starting"
+          fi
+
+          echo "⏳ (試行 $i/$max_attempts) 起動を待機中... (Status: $display_status, Interval: ${interval}s)"
           sleep $interval
         done
         
+        # ループ終了後、最終確認
         if [ "$health_status" != "healthy" ]; then
           echo "❌ アプリケーションの起動に失敗しました。"
           docker compose ps
