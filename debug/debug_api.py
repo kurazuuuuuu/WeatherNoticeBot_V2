@@ -9,9 +9,9 @@ import sys
 import os
 
 # プロジェクトのルートディレクトリをパスに追加
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
-from services.weather_service import WeatherService
+from src.services.weather_service import WeatherService
 
 
 async def debug_api_structure():

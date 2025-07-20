@@ -1,0 +1,4 @@
+"""テストパッケージ
+
+Discord Weather Botのテストスイート
+"""
