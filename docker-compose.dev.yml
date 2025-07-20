@@ -1,0 +1,43 @@
+# 開発環境用のDocker Compose設定
+services:
+  # Discord Weather Bot（開発モード）
+  weather-bot-dev:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    container_name: discord-weather-bot-dev
+    restart: "no"  # 開発時は自動再起動しない
+    environment:
+      # Discord設定
+      - DISCORD_TOKEN=${DISCORD_TOKEN}
+      - DISCORD_GUILD_ID=${DISCORD_GUILD_ID:-}
+      
+      # データベース設定（開発用SQLite）
+      - DATABASE_URL=sqlite:///data/weather_bot_dev.db
+      
+      # Google Gemini AI設定
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      
+      # ボット設定
+      - COMMAND_PREFIX=${COMMAND_PREFIX:-/}
+      - DEFAULT_TIMEZONE=${DEFAULT_TIMEZONE:-Asia/Tokyo}
+      
+      # ログ設定（開発用）
+      - LOG_LEVEL=DEBUG
+      - LOG_FILE=logs/weather_bot_dev.log
+    volumes:
+      # ソースコードのマウント（ホットリロード用）
+      - .:/app
+      # データベースファイルの永続化
+      - ./data:/app/data
+      # ログファイルの永続化
+      - ./logs:/app/logs
+    networks:
+      - weather-bot-dev-network
+    # 開発時はヘルスチェックを無効化
+    # healthcheck:
+    #   disable: true
+
+networks:
+  weather-bot-dev-network:
+    driver: bridge

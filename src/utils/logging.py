@@ -36,8 +36,15 @@ def setup_logging() -> logging.Logger:
     logger.addHandler(console_handler)
     
     # File handler with rotation
+    log_file_path = Path(config.LOG_FILE)
+    if log_file_path.is_absolute():
+        file_path = log_file_path
+    else:
+        # LOG_FILEが相対パスの場合、ファイル名のみを取得
+        file_path = log_dir / log_file_path.name
+    
     file_handler = logging.handlers.RotatingFileHandler(
-        log_dir / config.LOG_FILE,
+        file_path,
         maxBytes=10 * 1024 * 1024,  # 10MB
         backupCount=5
     )

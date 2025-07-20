@@ -57,7 +57,10 @@ def weather_data_to_context(weather_data) -> WeatherContext:
 class AIMessageService:
     """Google Gemini AIを使用したメッセージ生成サービス"""
     
-    def __init__(self, config: Config):
+    def __init__(self, config: Config = None):
+        if config is None:
+            from src.config import config as default_config
+            config = default_config
         self.config = config
         self.logger = logging.getLogger(__name__)
         self._client = None
