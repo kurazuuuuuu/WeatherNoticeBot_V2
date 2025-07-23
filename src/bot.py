@@ -68,6 +68,12 @@ class WeatherBot(commands.Bot):
             await self.add_cog(AdminCommands(self))
             logger.info("管理者コマンドを読み込みました")
             
+            # テストコマンドの読み込み（開発環境のみ）
+            if config.DEBUG:
+                from src.commands.test_commands import TestCommands
+                await self.add_cog(TestCommands(self))
+                logger.info("テストコマンドを読み込みました")
+            
         except ImportError as e:
             logger.warning(f"コマンドの読み込みに失敗しました（まだ実装されていない可能性があります）: {e}")
         except Exception as e:

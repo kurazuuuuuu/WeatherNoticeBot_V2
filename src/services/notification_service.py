@@ -14,6 +14,7 @@ from discord.ext import commands
 from .user_service import UserService
 from .weather_service import WeatherService
 from .ai_service import AIMessageService, WeatherContext, weather_data_to_context
+from ..utils.embed_utils import WeatherEmbedBuilder
 
 logger = logging.getLogger(__name__)
 
@@ -193,8 +194,13 @@ class NotificationService:
                 logger.error(f"Discordユーザーが見つかりません: {user_id}")
                 return False
             
+            # AIメッセージが長すぎる場合は切り詰める
+            if ai_message and len(ai_message) > 1000:
+                ai_message = WeatherEmbedBuilder.truncate_field_value(ai_message, 1000)
+            
             # Embedメッセージを作成
-            embed = self._create_weather_embed(weather_data, ai_message)
+            embed = WeatherEmbedBuilder.create_current_weather_embed(weather_data, ai_message)
+            embed = WeatherEmbedBuilder.validate_embed_limits(embed)
             
             # DMを送信
             await user.send(embed=embed)
@@ -225,98 +231,7 @@ class NotificationService:
             logger.error(f"DM送信中に予期しないエラーが発生しました: ユーザー {user_id} - {str(e)}")
             return False
     
-    def _create_weather_embed(self, weather_data, ai_message: str) -> discord.Embed:
-        """
-        天気情報のDiscord Embedを作成
-        
-        Args:
-            weather_data: 天気データ
-            ai_message: AIメッセージ
-            
-        Returns:
-            Discord Embed
-        """
-        # 天気に応じた色を設定
-        color = self._get_weather_color(weather_data.weather_description)
-        
-        # Embedを作成
-        embed = discord.Embed(
-            title=f"🌤️ {weather_data.area_name}の天気情報",
-            description=ai_message,
-            color=color,
-            timestamp=datetime.now()
-        )
-        
-        # 天気情報フィールドを追加
-        embed.add_field(
-            name="☀️ 天気",
-            value=weather_data.weather_description,
-            inline=True
-        )
-        
-        if weather_data.temperature is not None:
-            embed.add_field(
-                name="🌡️ 気温",
-                value=f"{weather_data.temperature}°C",
-                inline=True
-            )
-        
-        embed.add_field(
-            name="☔ 降水確率",
-            value=f"{weather_data.precipitation_probability}%",
-            inline=True
-        )
-        
-        if weather_data.wind:
-            embed.add_field(
-                name="💨 風",
-                value=weather_data.wind,
-                inline=True
-            )
-        
-        # 発表時刻を追加
-        embed.add_field(
-            name="📅 発表時刻",
-            value=weather_data.publish_time.strftime("%Y年%m月%d日 %H時%M分"),
-            inline=False
-        )
-        
-        # フッターを設定
-        embed.set_footer(text="気象庁データより | 定時天気通知")
-        
-        return embed
-    
-    def _get_weather_color(self, weather_description: str) -> int:
-        """
-        天気説明に基づいてEmbedの色を決定
-        
-        Args:
-            weather_description: 天気説明
-            
-        Returns:
-            色コード（整数）
-        """
-        weather_lower = weather_description.lower()
-        
-        # 晴れ系
-        if "晴" in weather_lower:
-            return 0xFFD700  # ゴールド
-        
-        # 雨系
-        elif "雨" in weather_lower or "雷" in weather_lower:
-            return 0x4682B4  # スチールブルー
-        
-        # 雪系
-        elif "雪" in weather_lower:
-            return 0xF0F8FF  # アリスブルー
-        
-        # 曇り系
-        elif "曇" in weather_lower or "くもり" in weather_lower:
-            return 0x708090  # スレートグレー
-        
-        # デフォルト
-        else:
-            return 0x87CEEB  # スカイブルー
+
     
     async def _send_location_setup_message(self, user_id: int) -> None:
         """
@@ -328,20 +243,14 @@ class NotificationService:
         try:
             user = await self.bot_client.fetch_user(user_id)
             if user:
-                embed = discord.Embed(
-                    title="📍 位置情報の設定が必要です",
-                    description="定時天気通知を受け取るには、まず位置情報を設定してください。",
-                    color=0xFFA500  # オレンジ
-                )
-                embed.add_field(
-                    name="設定方法",
-                    value="`/set-location <地域名>` コマンドを使用して位置を設定してください。",
-                    inline=False
-                )
-                embed.add_field(
-                    name="例",
-                    value="`/set-location 東京都` または `/set-location 大阪府`",
-                    inline=False
+                embed = WeatherEmbedBuilder.create_error_embed(
+                    "位置情報の設定が必要です",
+                    "定時天気通知を受け取るには、まず位置情報を設定してください。\n\n"
+                    "**設定方法:**\n"
+                    "`/set-location <地域名>` コマンドを使用して位置を設定してください。\n\n"
+                    "**例:**\n"
+                    "`/set-location 東京都` または `/set-location 大阪府`",
+                    "not_found"
                 )
                 
                 await user.send(embed=embed)
@@ -360,15 +269,12 @@ class NotificationService:
         try:
             user = await self.bot_client.fetch_user(user_id)
             if user:
-                embed = discord.Embed(
-                    title="⚠️ 天気情報の取得に失敗しました",
-                    description=error_message,
-                    color=0xFF6B6B  # 赤
-                )
-                embed.add_field(
-                    name="対処方法",
-                    value="しばらく時間をおいてから再度お試しください。問題が続く場合は管理者にお問い合わせください。",
-                    inline=False
+                embed = WeatherEmbedBuilder.create_error_embed(
+                    "天気情報の取得に失敗しました",
+                    f"{error_message}\n\n"
+                    "**対処方法:**\n"
+                    "しばらく時間をおいてから再度お試しください。問題が続く場合は管理者にお問い合わせください。",
+                    "api_error"
                 )
                 
                 await user.send(embed=embed)

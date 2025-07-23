@@ -4,6 +4,7 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 from src.utils.logging import logger
+from src.utils.embed_utils import WeatherEmbedBuilder
 
 
 class AdminCommands(commands.Cog):
@@ -23,20 +24,30 @@ class AdminCommands(commands.Cog):
         try:
             # 管理者権限チェック
             if not interaction.user.guild_permissions.administrator:
-                await interaction.followup.send("このコマンドは管理者のみ使用できます。", ephemeral=True)
+                embed = WeatherEmbedBuilder.create_error_embed(
+                    "権限エラー",
+                    "このコマンドは管理者のみ使用できます。",
+                    "permission"
+                )
+                await interaction.followup.send(embed=embed, ephemeral=True)
                 return
             
             # TODO: 実装予定 - サーバー設定ロジック
             embed = discord.Embed(
                 title="🔧 サーバー設定",
                 description="このコマンドは現在実装中です。",
-                color=discord.Color.gold()
+                color=0xFFD700  # 金色
             )
             await interaction.followup.send(embed=embed, ephemeral=True)
             
         except Exception as e:
             logger.error(f"weather-configコマンドでエラーが発生しました: {e}")
-            await interaction.followup.send("設定管理中にエラーが発生しました。", ephemeral=True)
+            embed = WeatherEmbedBuilder.create_error_embed(
+                "システムエラー",
+                "設定管理中にエラーが発生しました。",
+                "general"
+            )
+            await interaction.followup.send(embed=embed, ephemeral=True)
     
     @app_commands.command(name="stats", description="ボットの統計情報を表示します（管理者専用）")
     @app_commands.default_permissions(administrator=True)
@@ -47,7 +58,12 @@ class AdminCommands(commands.Cog):
         try:
             # 管理者権限チェック
             if not interaction.user.guild_permissions.administrator:
-                await interaction.followup.send("このコマンドは管理者のみ使用できます。", ephemeral=True)
+                embed = WeatherEmbedBuilder.create_error_embed(
+                    "権限エラー",
+                    "このコマンドは管理者のみ使用できます。",
+                    "permission"
+                )
+                await interaction.followup.send(embed=embed, ephemeral=True)
                 return
             
             # 基本的な統計情報を取得
@@ -66,7 +82,12 @@ class AdminCommands(commands.Cog):
             
         except Exception as e:
             logger.error(f"bot-statsコマンドでエラーが発生しました: {e}")
-            await interaction.followup.send("統計情報の取得中にエラーが発生しました。", ephemeral=True)
+            embed = WeatherEmbedBuilder.create_error_embed(
+                "システムエラー",
+                "統計情報の取得中にエラーが発生しました。",
+                "general"
+            )
+            await interaction.followup.send(embed=embed, ephemeral=True)
 
 
 async def setup(bot):
