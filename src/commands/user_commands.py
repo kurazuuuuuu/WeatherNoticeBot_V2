@@ -6,6 +6,7 @@ from discord import app_commands
 from src.utils.logging import logger
 from src.services.weather_service import WeatherService, WeatherAPIError
 from src.services.user_service import user_service
+from src.utils.embed_utils import WeatherEmbedBuilder
 
 
 class UserCommands(commands.Cog):
@@ -29,11 +30,11 @@ class UserCommands(commands.Cog):
                 area_matches = await self.weather_service.search_area_by_name(area)
             
             if not area_matches:
-                embed = discord.Embed(
-                    title="❌ 地域が見つかりません",
-                    description=f"「{area}」に該当する地域が見つかりませんでした。\n"
-                               "正確な地域名（例：東京都、大阪府、札幌市など）を入力してください。",
-                    color=discord.Color.red()
+                embed = WeatherEmbedBuilder.create_error_embed(
+                    "地域が見つかりません",
+                    f"「{area}」に該当する地域が見つかりませんでした。\n"
+                    "正確な地域名（例：東京都、大阪府、札幌市など）を入力してください。",
+                    "not_found"
                 )
                 await interaction.followup.send(embed=embed)
                 return
@@ -49,37 +50,43 @@ class UserCommands(commands.Cog):
             )
             
             if success:
-                embed = discord.Embed(
-                    title="✅ 地域設定完了",
-                    description=f"地域を「{selected_area.name}」に設定しました。",
-                    color=discord.Color.green()
-                )
+                description = f"地域を「{selected_area.name}」に設定しました。"
                 
                 # 複数の候補があった場合は他の候補も表示
                 if len(area_matches) > 1:
                     other_matches = [match.name for match in area_matches[1:6]]  # 最大5つまで
-                    embed.add_field(
-                        name="その他の候補",
-                        value="\n".join(other_matches),
-                        inline=False
-                    )
-                    embed.set_footer(text="別の地域を設定したい場合は、再度コマンドを実行してください。")
+                    description += f"\n\n**その他の候補:**\n" + "\n".join(other_matches)
+                    description += "\n\n別の地域を設定したい場合は、再度コマンドを実行してください。"
                 
+                embed = WeatherEmbedBuilder.create_success_embed(
+                    "地域設定完了",
+                    description
+                )
                 await interaction.followup.send(embed=embed)
             else:
-                embed = discord.Embed(
-                    title="❌ 設定エラー",
-                    description="地域設定の保存に失敗しました。しばらく時間をおいてからお試しください。",
-                    color=discord.Color.red()
+                embed = WeatherEmbedBuilder.create_error_embed(
+                    "設定エラー",
+                    "地域設定の保存に失敗しました。しばらく時間をおいてからお試しください。",
+                    "general"
                 )
                 await interaction.followup.send(embed=embed)
             
         except WeatherAPIError as e:
             logger.error(f"地域検索API呼び出しエラー: {e}")
-            await interaction.followup.send("地域情報の取得中にエラーが発生しました。しばらく時間をおいてからお試しください。")
+            embed = WeatherEmbedBuilder.create_error_embed(
+                "API エラー",
+                "地域情報の取得中にエラーが発生しました。しばらく時間をおいてからお試しください。",
+                "api_error"
+            )
+            await interaction.followup.send(embed=embed)
         except Exception as e:
             logger.error(f"set-locationコマンドでエラーが発生しました: {e}")
-            await interaction.followup.send("地域設定中にエラーが発生しました。")
+            embed = WeatherEmbedBuilder.create_error_embed(
+                "システムエラー",
+                "地域設定中にエラーが発生しました。",
+                "general"
+            )
+            await interaction.followup.send(embed=embed)
     
     @app_commands.command(name="schedule-weather", description="定時天気通知を設定します")
     @app_commands.describe(hour="通知時間（0-23時で指定）")
@@ -89,10 +96,10 @@ class UserCommands(commands.Cog):
         
         try:
             if not (0 <= hour <= 23):
-                embed = discord.Embed(
-                    title="❌ 無効な時間",
-                    description="時間は0から23の間で指定してください。\n例：`/schedule-weather hour:9` （午前9時に通知）",
-                    color=discord.Color.red()
+                embed = WeatherEmbedBuilder.create_error_embed(
+                    "無効な時間",
+                    "時間は0から23の間で指定してください。\n例：`/schedule-weather hour:9` （午前9時に通知）",
+                    "general"
                 )
                 await interaction.followup.send(embed=embed)
                 return
@@ -100,11 +107,11 @@ class UserCommands(commands.Cog):
             # ユーザーの位置情報が設定されているかチェック
             user_location = await user_service.get_user_location(interaction.user.id)
             if not user_location:
-                embed = discord.Embed(
-                    title="❌ 地域未設定",
-                    description="通知を設定する前に、まず地域を設定してください。\n"
-                               "`/set-location` コマンドで地域を設定できます。",
-                    color=discord.Color.red()
+                embed = WeatherEmbedBuilder.create_error_embed(
+                    "地域未設定",
+                    "通知を設定する前に、まず地域を設定してください。\n"
+                    "`/set-location` コマンドで地域を設定できます。",
+                    "not_found"
                 )
                 await interaction.followup.send(embed=embed)
                 return
@@ -113,34 +120,30 @@ class UserCommands(commands.Cog):
             success = await user_service.set_notification_schedule(interaction.user.id, hour)
             
             if success:
-                embed = discord.Embed(
-                    title="✅ 通知設定完了",
-                    description=f"毎日 {hour:02d}:00 に天気情報をDMでお送りします。",
-                    color=discord.Color.green()
+                embed = WeatherEmbedBuilder.create_success_embed(
+                    "通知設定完了",
+                    f"毎日 {hour:02d}:00 に天気情報をDMでお送りします。\n\n"
+                    f"**設定地域:** {user_location[1]}\n"
+                    f"**通知時間:** {hour:02d}:00\n\n"
+                    "通知を停止したい場合は `/unschedule-weather` コマンドを使用してください。"
                 )
-                embed.add_field(
-                    name="設定地域",
-                    value=user_location[1],  # area_name
-                    inline=True
-                )
-                embed.add_field(
-                    name="通知時間",
-                    value=f"{hour:02d}:00",
-                    inline=True
-                )
-                embed.set_footer(text="通知を停止したい場合は /unschedule-weather コマンドを使用してください。")
                 await interaction.followup.send(embed=embed)
             else:
-                embed = discord.Embed(
-                    title="❌ 設定エラー",
-                    description="通知設定の保存に失敗しました。しばらく時間をおいてからお試しください。",
-                    color=discord.Color.red()
+                embed = WeatherEmbedBuilder.create_error_embed(
+                    "設定エラー",
+                    "通知設定の保存に失敗しました。しばらく時間をおいてからお試しください。",
+                    "general"
                 )
                 await interaction.followup.send(embed=embed)
             
         except Exception as e:
             logger.error(f"schedule-weatherコマンドでエラーが発生しました: {e}")
-            await interaction.followup.send("通知設定中にエラーが発生しました。")
+            embed = WeatherEmbedBuilder.create_error_embed(
+                "システムエラー",
+                "通知設定中にエラーが発生しました。",
+                "general"
+            )
+            await interaction.followup.send(embed=embed)
     
     @app_commands.command(name="unschedule-weather", description="定時天気通知を停止します")
     async def unschedule_weather(self, interaction: discord.Interaction):
@@ -151,10 +154,10 @@ class UserCommands(commands.Cog):
             # 現在の設定を確認
             user_settings = await user_service.get_user_settings(interaction.user.id)
             if not user_settings or not user_settings.get('is_notification_enabled'):
-                embed = discord.Embed(
-                    title="ℹ️ 通知未設定",
-                    description="現在、定時通知は設定されていません。",
-                    color=discord.Color.blue()
+                embed = WeatherEmbedBuilder.create_error_embed(
+                    "通知未設定",
+                    "現在、定時通知は設定されていません。",
+                    "not_found"
                 )
                 await interaction.followup.send(embed=embed)
                 return
@@ -163,30 +166,31 @@ class UserCommands(commands.Cog):
             success = await user_service.disable_notifications(interaction.user.id)
             
             if success:
-                embed = discord.Embed(
-                    title="✅ 通知停止完了",
-                    description="定時天気通知を停止しました。",
-                    color=discord.Color.green()
+                embed = WeatherEmbedBuilder.create_success_embed(
+                    "通知停止完了",
+                    f"定時天気通知を停止しました。\n\n"
+                    f"**停止前の設定:**\n"
+                    f"地域: {user_settings.get('area_name', '未設定')}\n"
+                    f"通知時間: {user_settings.get('notification_hour', 0):02d}:00\n\n"
+                    "再度通知を設定したい場合は `/schedule-weather` コマンドを使用してください。"
                 )
-                embed.add_field(
-                    name="停止前の設定",
-                    value=f"地域: {user_settings.get('area_name', '未設定')}\n"
-                          f"通知時間: {user_settings.get('notification_hour', 0):02d}:00",
-                    inline=False
-                )
-                embed.set_footer(text="再度通知を設定したい場合は /schedule-weather コマンドを使用してください。")
                 await interaction.followup.send(embed=embed)
             else:
-                embed = discord.Embed(
-                    title="❌ 停止エラー",
-                    description="通知停止の処理に失敗しました。しばらく時間をおいてからお試しください。",
-                    color=discord.Color.red()
+                embed = WeatherEmbedBuilder.create_error_embed(
+                    "停止エラー",
+                    "通知停止の処理に失敗しました。しばらく時間をおいてからお試しください。",
+                    "general"
                 )
                 await interaction.followup.send(embed=embed)
             
         except Exception as e:
             logger.error(f"unschedule-weatherコマンドでエラーが発生しました: {e}")
-            await interaction.followup.send("通知停止中にエラーが発生しました。")
+            embed = WeatherEmbedBuilder.create_error_embed(
+                "システムエラー",
+                "通知停止中にエラーが発生しました。",
+                "general"
+            )
+            await interaction.followup.send(embed=embed)
     
     @app_commands.command(name="my-settings", description="現在のユーザー設定を表示します")
     async def my_settings(self, interaction: discord.Interaction):
@@ -198,11 +202,11 @@ class UserCommands(commands.Cog):
             user_settings = await user_service.get_user_settings(interaction.user.id)
             
             if not user_settings:
-                embed = discord.Embed(
-                    title="ℹ️ 設定なし",
-                    description="まだ設定が登録されていません。\n"
-                               "`/set-location` コマンドで地域を設定してください。",
-                    color=discord.Color.blue()
+                embed = WeatherEmbedBuilder.create_error_embed(
+                    "設定なし",
+                    "まだ設定が登録されていません。\n"
+                    "`/set-location` コマンドで地域を設定してください。",
+                    "not_found"
                 )
                 await interaction.followup.send(embed=embed)
                 return
@@ -277,7 +281,12 @@ class UserCommands(commands.Cog):
             
         except Exception as e:
             logger.error(f"my-settingsコマンドでエラーが発生しました: {e}")
-            await interaction.followup.send("設定表示中にエラーが発生しました。")
+            embed = WeatherEmbedBuilder.create_error_embed(
+                "システムエラー",
+                "設定表示中にエラーが発生しました。",
+                "general"
+            )
+            await interaction.followup.send(embed=embed)
 
 
 async def setup(bot):

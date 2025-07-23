@@ -10,7 +10,8 @@ services:
       - DISCORD_GUILD_ID=${DISCORD_GUILD_ID:-}
       
       # データベース設定
-      - DATABASE_URL=sqlite:///data/weather_bot.db
+      # 環境変数USE_POSTGRESがtrueの場合はPostgreSQLを使用、それ以外はSQLite
+      - DATABASE_URL=${DATABASE_URL:-sqlite:///data/weather_bot.db}
       
       # Google Gemini AI設定
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
@@ -29,7 +30,10 @@ services:
       
       # ログ設定
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
-      - LOG_FILE=weather_bot.log
+      - LOG_FILE=${LOG_FILE:-logs/weather_bot.log}
+      
+      # 環境設定
+      - ENVIRONMENT=${ENVIRONMENT:-production}
     volumes:
       # データベースファイルの永続化
       - ./data:/app/data

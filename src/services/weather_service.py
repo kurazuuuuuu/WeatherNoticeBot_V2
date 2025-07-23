@@ -6,11 +6,13 @@
 
 import asyncio
 import logging
+import json
+import time
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass
 from datetime import datetime, date
 import aiohttp
-from aiohttp import ClientTimeout, ClientError
+from aiohttp import ClientTimeout, ClientError, ClientResponseError
 
 
 # データクラス定義
@@ -67,6 +69,24 @@ class AlertData:
 
 class WeatherAPIError(Exception):
     """気象庁API関連のエラー"""
+    def __init__(self, message: str, status_code: Optional[int] = None, retry_after: Optional[int] = None):
+        super().__init__(message)
+        self.status_code = status_code
+        self.retry_after = retry_after
+
+
+class WeatherAPIRateLimitError(WeatherAPIError):
+    """レート制限エラー"""
+    pass
+
+
+class WeatherAPIServerError(WeatherAPIError):
+    """サーバーエラー"""
+    pass
+
+
+class WeatherAPITimeoutError(WeatherAPIError):
+    """タイムアウトエラー"""
     pass
 
 
@@ -80,14 +100,31 @@ class WeatherService:
     MAX_RETRIES = 3
     RETRY_DELAY = 1.0  # 秒
     BACKOFF_FACTOR = 2.0
+    MAX_RETRY_DELAY = 60.0  # 最大リトライ間隔
     
     # タイムアウト設定
     REQUEST_TIMEOUT = 30  # 秒
+    CONNECT_TIMEOUT = 10  # 接続タイムアウト
+    
+    # レート制限設定
+    RATE_LIMIT_WINDOW = 60  # 1分間のウィンドウ
+    MAX_REQUESTS_PER_WINDOW = 100  # 1分間の最大リクエスト数
+    
+    # キャッシュ設定
+    CACHE_DURATION = 300  # 5分間のキャッシュ
     
     def __init__(self):
         """WeatherServiceの初期化"""
         self.logger = logging.getLogger(__name__)
         self.session: Optional[aiohttp.ClientSession] = None
+        
+        # レート制限管理
+        self._request_times: List[float] = []
+        self._last_request_time = 0.0
+        
+        # 簡易キャッシュ
+        self._cache: Dict[str, Dict[str, Any]] = {}
+        self._cache_timestamps: Dict[str, float] = {}
         
     async def __aenter__(self):
         """非同期コンテキストマネージャーの開始"""
@@ -101,8 +138,25 @@ class WeatherService:
     async def start_session(self):
         """HTTPセッションを開始"""
         if self.session is None or self.session.closed:
-            timeout = ClientTimeout(total=self.REQUEST_TIMEOUT)
-            self.session = aiohttp.ClientSession(timeout=timeout)
+            timeout = ClientTimeout(
+                total=self.REQUEST_TIMEOUT,
+                connect=self.CONNECT_TIMEOUT
+            )
+            connector = aiohttp.TCPConnector(
+                limit=10,  # 最大接続数
+                limit_per_host=5,  # ホスト毎の最大接続数
+                ttl_dns_cache=300,  # DNS キャッシュTTL
+                use_dns_cache=True,
+            )
+            self.session = aiohttp.ClientSession(
+                timeout=timeout,
+                connector=connector,
+                headers={
+                    'User-Agent': 'WeatherBot/1.0 (Discord Bot)',
+                    'Accept': 'application/json',
+                    'Accept-Encoding': 'gzip, deflate'
+                }
+            )
             self.logger.info("HTTPセッションを開始しました")
             
     async def close_session(self):
@@ -111,13 +165,55 @@ class WeatherService:
             await self.session.close()
             self.logger.info("HTTPセッションを終了しました")
             
-    async def _make_request(self, url: str, retries: int = 0) -> Dict[str, Any]:
+    def _is_cache_valid(self, cache_key: str) -> bool:
+        """キャッシュが有効かどうかをチェック"""
+        if cache_key not in self._cache_timestamps:
+            return False
+        
+        cache_time = self._cache_timestamps[cache_key]
+        return (time.time() - cache_time) < self.CACHE_DURATION
+    
+    def _get_from_cache(self, cache_key: str) -> Optional[Dict[str, Any]]:
+        """キャッシュからデータを取得"""
+        if self._is_cache_valid(cache_key):
+            self.logger.debug(f"キャッシュからデータを取得: {cache_key}")
+            return self._cache.get(cache_key)
+        return None
+    
+    def _set_cache(self, cache_key: str, data: Dict[str, Any]) -> None:
+        """データをキャッシュに保存"""
+        self._cache[cache_key] = data
+        self._cache_timestamps[cache_key] = time.time()
+        self.logger.debug(f"データをキャッシュに保存: {cache_key}")
+    
+    def _check_rate_limit(self) -> None:
+        """レート制限をチェック"""
+        current_time = time.time()
+        
+        # 古いリクエスト時刻を削除
+        self._request_times = [
+            req_time for req_time in self._request_times
+            if current_time - req_time < self.RATE_LIMIT_WINDOW
+        ]
+        
+        # レート制限チェック
+        if len(self._request_times) >= self.MAX_REQUESTS_PER_WINDOW:
+            raise WeatherAPIRateLimitError(
+                f"レート制限に達しました。{self.RATE_LIMIT_WINDOW}秒後に再試行してください。"
+            )
+        
+        # 現在のリクエスト時刻を記録
+        self._request_times.append(current_time)
+        self._last_request_time = current_time
+    
+    async def _make_request(self, url: str, retries: int = 0, use_cache: bool = True) -> Dict[str, Any]:
         """
         HTTPリクエストを実行（リトライ機能付き）
         
         Args:
             url: リクエストURL
             retries: 現在のリトライ回数
+            use_cache: キャッシュを使用するかどうか
             
         Returns:
             APIレスポンスのJSONデータ
@@ -125,6 +221,25 @@ class WeatherService:
         Raises:
             WeatherAPIError: API呼び出しに失敗した場合
         """
+        # キャッシュチェック
+        cache_key = url
+        if use_cache:
+            cached_data = self._get_from_cache(cache_key)
+            if cached_data is not None:
+                return cached_data
+        
+        # レート制限チェック
+        try:
+            self._check_rate_limit()
+        except WeatherAPIRateLimitError as e:
+            if retries < self.MAX_RETRIES:
+                delay = min(self.RETRY_DELAY * (self.BACKOFF_FACTOR ** retries), self.MAX_RETRY_DELAY)
+                self.logger.warning(f"レート制限のためリトライします ({retries + 1}/{self.MAX_RETRIES}) - {delay}秒後")
+                await asyncio.sleep(delay)
+                return await self._make_request(url, retries + 1, use_cache)
+            else:
+                raise
+        
         if self.session is None or self.session.closed:
             await self.start_session()
             
@@ -132,30 +247,92 @@ class WeatherService:
             self.logger.debug(f"APIリクエスト開始: {url}")
             
             async with self.session.get(url) as response:
+                # レスポンスヘッダーからレート制限情報を取得
+                retry_after = None
+                if 'Retry-After' in response.headers:
+                    try:
+                        retry_after = int(response.headers['Retry-After'])
+                    except ValueError:
+                        pass
+                
                 # HTTPステータスコードをチェック
                 if response.status == 200:
-                    data = await response.json()
-                    self.logger.debug(f"APIリクエスト成功: {url}")
-                    return data
+                    try:
+                        data = await response.json()
+                        self.logger.debug(f"APIリクエスト成功: {url}")
+                        
+                        # キャッシュに保存
+                        if use_cache:
+                            self._set_cache(cache_key, data)
+                        
+                        return data
+                    except json.JSONDecodeError as e:
+                        self.logger.error(f"JSONデコードエラー: {url} - {str(e)}")
+                        raise WeatherAPIError(f"レスポンスのJSONデコードに失敗しました: {str(e)}")
+                        
                 elif response.status == 429:  # レート制限
                     self.logger.warning(f"レート制限に達しました: {url}")
-                    raise WeatherAPIError(f"レート制限に達しました (HTTP {response.status})")
+                    raise WeatherAPIRateLimitError(
+                        f"レート制限に達しました (HTTP {response.status})",
+                        status_code=response.status,
+                        retry_after=retry_after
+                    )
+                    
+                elif response.status == 404:  # Not Found
+                    self.logger.warning(f"リソースが見つかりません: {url}")
+                    raise WeatherAPIError(
+                        f"リソースが見つかりません (HTTP {response.status})",
+                        status_code=response.status
+                    )
+                    
                 elif response.status >= 500:  # サーバーエラー
                     self.logger.warning(f"サーバーエラー: {url} (HTTP {response.status})")
-                    raise WeatherAPIError(f"サーバーエラー (HTTP {response.status})")
+                    raise WeatherAPIServerError(
+                        f"サーバーエラー (HTTP {response.status})",
+                        status_code=response.status,
+                        retry_after=retry_after
+                    )
+                    
                 else:
                     self.logger.error(f"APIリクエスト失敗: {url} (HTTP {response.status})")
-                    raise WeatherAPIError(f"APIリクエスト失敗 (HTTP {response.status})")
+                    raise WeatherAPIError(
+                        f"APIリクエスト失敗 (HTTP {response.status})",
+                        status_code=response.status
+                    )
                     
+        except asyncio.TimeoutError:
+            self.logger.error(f"タイムアウトエラー: {url}")
+            
+            # タイムアウトの場合もリトライ
+            if retries < self.MAX_RETRIES:
+                delay = min(self.RETRY_DELAY * (self.BACKOFF_FACTOR ** retries), self.MAX_RETRY_DELAY)
+                self.logger.info(f"タイムアウトのためリトライします ({retries + 1}/{self.MAX_RETRIES}) - {delay}秒後")
+                await asyncio.sleep(delay)
+                return await self._make_request(url, retries + 1, use_cache)
+            else:
+                raise WeatherAPITimeoutError(f"リクエストがタイムアウトしました: {url}")
+                
+        except ClientResponseError as e:
+            self.logger.error(f"HTTPレスポンスエラー: {url} - {str(e)}")
+            
+            # サーバーエラーの場合はリトライ
+            if e.status >= 500 and retries < self.MAX_RETRIES:
+                delay = min(self.RETRY_DELAY * (self.BACKOFF_FACTOR ** retries), self.MAX_RETRY_DELAY)
+                self.logger.info(f"サーバーエラーのためリトライします ({retries + 1}/{self.MAX_RETRIES}) - {delay}秒後")
+                await asyncio.sleep(delay)
+                return await self._make_request(url, retries + 1, use_cache)
+            else:
+                raise WeatherAPIError(f"HTTPレスポンスエラー: {str(e)}", status_code=e.status)
+                
         except ClientError as e:
             self.logger.error(f"ネットワークエラー: {url} - {str(e)}")
             
-            # リトライ処理
+            # ネットワークエラーの場合もリトライ
             if retries < self.MAX_RETRIES:
-                delay = self.RETRY_DELAY * (self.BACKOFF_FACTOR ** retries)
-                self.logger.info(f"リトライします ({retries + 1}/{self.MAX_RETRIES}) - {delay}秒後")
+                delay = min(self.RETRY_DELAY * (self.BACKOFF_FACTOR ** retries), self.MAX_RETRY_DELAY)
+                self.logger.info(f"ネットワークエラーのためリトライします ({retries + 1}/{self.MAX_RETRIES}) - {delay}秒後")
                 await asyncio.sleep(delay)
-                return await self._make_request(url, retries + 1)
+                return await self._make_request(url, retries + 1, use_cache)
             else:
                 raise WeatherAPIError(f"ネットワークエラー: {str(e)}")
                 
