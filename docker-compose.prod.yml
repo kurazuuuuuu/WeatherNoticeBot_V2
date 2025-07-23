@@ -1,0 +1,260 @@
+# 本番環境用 Docker Compose 設定
+version: '3.8'
+
+services:
+  # Discord Weather Bot（本番環境）
+  weather-bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: discord-weather-bot:latest
+    container_name: weather-bot-prod
+    restart: unless-stopped
+    environment:
+      # Discord設定
+      - DISCORD_TOKEN=${DISCORD_TOKEN}
+      - DISCORD_GUILD_ID=  # 本番環境ではグローバルコマンドを使用
+      
+      # データベース設定
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      
+      # Redis設定
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
+      
+      # Google Gemini AI設定
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      
+      # ボット設定
+      - COMMAND_PREFIX=/
+      - DEFAULT_TIMEZONE=Asia/Tokyo
+      
+      # 通知設定
+      - NOTIFICATION_RETRY_ATTEMPTS=3
+      - NOTIFICATION_RETRY_DELAY=300
+      
+      # API制限設定
+      - JMA_API_RATE_LIMIT=60
+      - GEMINI_API_RATE_LIMIT=60
+      
+      # ログ設定
+      - LOG_LEVEL=INFO
+      - LOG_FILE=/app/logs/weather_bot.log
+      
+      # セキュリティ設定
+      - SECRET_KEY=${SECRET_KEY}
+      
+      # 環境設定
+      - ENVIRONMENT=production
+      
+      # 監視設定
+      - HEALTH_CHECK_PORT=8080
+      - METRICS_PORT=9090
+    volumes:
+      # ログファイルの永続化
+      - ./logs:/app/logs
+      # 設定ファイルの永続化
+      - ./data:/app/data
+    networks:
+      - weather-bot-network
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '1.0'
+        reservations:
+          memory: 512M
+          cpus: '0.5'
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8080/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # PostgreSQL データベース（本番環境）
+  db:
+    image: postgres:15-alpine
+    container_name: weather-bot-db-prod
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_INITDB_ARGS=--encoding=UTF-8 --locale=C
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - ./postgresql.conf:/etc/postgresql/postgresql.conf:ro
+    networks:
+      - weather-bot-network
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+        reservations:
+          memory: 256M
+          cpus: '0.25'
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    # セキュリティ: 外部ポートを公開しない
+    # ports:
+    #   - "5432:5432"
+
+  # Redis（キャッシュとセッション管理）
+  redis:
+    image: redis:7-alpine
+    container_name: weather-bot-redis-prod
+    restart: unless-stopped
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}
+    volumes:
+      - redis_data:/data
+      - ./redis.conf:/usr/local/etc/redis/redis.conf:ro
+    networks:
+      - weather-bot-network
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: '0.25'
+        reservations:
+          memory: 128M
+          cpus: '0.1'
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    # セキュリティ: 外部ポートを公開しない
+    # ports:
+    #   - "6379:6379"
+
+  # Nginx リバースプロキシ（オプション）
+  nginx:
+    image: nginx:alpine
+    container_name: weather-bot-nginx-prod
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - ./logs/nginx:/var/log/nginx
+    depends_on:
+      - weather-bot
+    networks:
+      - weather-bot-network
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: '0.25'
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Prometheus（監視・メトリクス収集）
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: weather-bot-prometheus
+    restart: unless-stopped
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    networks:
+      - weather-bot-network
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Grafana（監視ダッシュボード）
+  grafana:
+    image: grafana/grafana:latest
+    container_name: weather-bot-grafana
+    restart: unless-stopped
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+    ports:
+      - "3000:3000"
+    networks:
+      - weather-bot-network
+    depends_on:
+      - prometheus
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: '0.25'
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:3000/api/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local
+
+networks:
+  weather-bot-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16

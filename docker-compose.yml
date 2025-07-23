@@ -11,7 +11,7 @@ services:
       
       # データベース設定
       # 環境変数USE_POSTGRESがtrueの場合はPostgreSQLを使用、それ以外はSQLite
-      - DATABASE_URL=${USE_POSTGRES:-false} == "true" ? "postgresql://${POSTGRES_USER:-weather_user}:${POSTGRES_PASSWORD:-weather_password}@db:5432/${POSTGRES_DB:-weather_bot}" : "sqlite:///data/weather_bot.db"
+      - DATABASE_URL=${DATABASE_URL:-sqlite:///data/weather_bot.db}
       
       # Google Gemini AI設定
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
@@ -42,8 +42,7 @@ services:
     networks:
       - weather-bot-network
     depends_on:
-      db:
-        condition: ${USE_POSTGRES:-false} == "true" ? "service_healthy" : "service_started"
+      - db
     healthcheck:
       test: ["CMD", "python", "-c", "import asyncio; import aiohttp; print('Bot is healthy')"]
       interval: 30s
