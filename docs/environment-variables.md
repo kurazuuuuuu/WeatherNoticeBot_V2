@@ -1,6 +1,6 @@
 # Discord Weather Bot 環境変数設定ガイド 🔧
 
-このガイドでは、Discord Weather Botで使用する環境変数について詳しく説明します。
+このガイドでは、Discord Weather Bot で使用する環境変数について詳しく説明します。
 
 ## 📋 目次
 
@@ -14,7 +14,7 @@
 
 ## 環境変数の概要
 
-Discord Weather Botは、設定を環境変数で管理します。これにより、異なる環境（開発、テスト、本番）で同じコードを使用できます。
+Discord Weather Bot は、設定を環境変数で管理します。これにより、異なる環境（開発、テスト、本番）で同じコードを使用できます。
 
 ### 設定ファイルの種類
 
@@ -22,7 +22,7 @@ Discord Weather Botは、設定を環境変数で管理します。これによ�
 - `.env.dev` - 開発環境用設定
 - `.env.prod` - 本番環境用設定
 - `.env` - 実際に使用される設定ファイル
-- `.env.docker` - Docker環境用設定
+- `.env.docker` - Docker 環境用設定
 
 ### 設定の優先順位
 
@@ -42,33 +42,54 @@ Discord Weather Botは、設定を環境変数で管理します。これによ�
 **例**: `DISCORD_TOKEN=トークン
 
 **取得方法**:
+
 1. [Discord Developer Portal](https://discord.com/developers/applications/) にアクセス
 2. アプリケーションを作成
 3. 「Bot」セクションでトークンを取得
 
 **注意事項**:
+
 - トークンは秘密情報です。他人と共有しないでください
-- GitHubなどの公開リポジトリにコミットしないでください
+- GitHub などの公開リポジトリにコミットしないでください
 - 定期的にトークンを再生成することを推奨します
 
-### データベース関連（本番環境）
+### データベース関連
 
-#### POSTGRES_DB
+#### DATABASE_URL
+
+**説明**: データベース接続 URL  
+**デフォルト**: `sqlite:///data/weather_bot.db`  
+**例**:
+
+- SQLite: `DATABASE_URL=sqlite:///data/weather_bot.db`
+- PostgreSQL: `DATABASE_URL=postgresql://weather_user:password@db:5432/weather_bot`
+
+#### USE_POSTGRES
+
+**説明**: PostgreSQL を使用するかどうか  
+**デフォルト**: `false`  
+**例**: `USE_POSTGRES=false`
+
+#### POSTGRES_DB (PostgreSQL 使用時のみ)
+
 **説明**: PostgreSQL データベース名  
 **デフォルト**: `weather_bot`  
 **例**: `POSTGRES_DB=weather_bot`
 
-#### POSTGRES_USER
+#### POSTGRES_USER (PostgreSQL 使用時のみ)
+
 **説明**: PostgreSQL ユーザー名  
 **デフォルト**: `weather_user`  
 **例**: `POSTGRES_USER=weather_user`
 
-#### POSTGRES_PASSWORD
+#### POSTGRES_PASSWORD (PostgreSQL 使用時のみ)
+
 **説明**: PostgreSQL パスワード  
-**形式**: 強力なパスワード（最低12文字、英数字記号混合）  
+**形式**: 強力なパスワード（最低 12 文字、英数字記号混合）  
 **例**: `POSTGRES_PASSWORD=MySecurePassword123!`
 
 **パスワード生成例**:
+
 ```bash
 # ランダムパスワード生成
 openssl rand -base64 32
@@ -81,45 +102,53 @@ python -c "import secrets; print(secrets.token_urlsafe(32))"
 
 これらの環境変数は、機能を拡張するために使用されます。
 
-### AI機能関連
+### AI 機能関連
 
 #### GEMINI_API_KEY
-**説明**: Google Gemini API キー（AI機能用）  
+
+**説明**: Google Gemini API キー（AI 機能用）  
 **形式**: 文字列  
 **例**: `GEMINI_API_KEY=AIzaSyAbCdEfGhIjKlMnOpQrStUvWxYz1234567890`
 
 **取得方法**:
+
 1. [Google AI Studio](https://makersuite.google.com/app/apikey) にアクセス
-2. APIキーを作成
+2. API キーを作成
 
 **注意事項**:
-- 設定しない場合、AI機能は無効になりますが基本機能は動作します
-- APIキーには使用制限があります
 
-### Discord設定
+- 設定しない場合、AI 機能は無効になりますが基本機能は動作します
+- API キーには使用制限があります
+
+### Discord 設定
 
 #### DISCORD_GUILD_ID
-**説明**: テスト用サーバーID（開発時のみ）  
+
+**説明**: テスト用サーバー ID（開発時のみ）  
 **形式**: 数値文字列  
 **例**: `DISCORD_GUILD_ID=123456789012345678`
 
 **用途**:
+
 - 開発・テスト時にコマンドを即座に反映
 - 本番環境では空にしてグローバルコマンドを使用
 
 **取得方法**:
-1. Discordで開発者モードを有効化
-2. サーバーを右クリック → 「IDをコピー」
+
+1. Discord で開発者モードを有効化
+2. サーバーを右クリック → 「ID をコピー」
 
 ### ログ設定
 
 #### LOG_LEVEL
+
 **説明**: ログレベル  
 **選択肢**: `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`  
 **デフォルト**: `INFO`  
 **例**: `LOG_LEVEL=INFO`
 
 **レベル説明**:
+
 - `DEBUG`: 詳細なデバッグ情報（開発時のみ）
 - `INFO`: 一般的な情報（推奨）
 - `WARNING`: 警告メッセージのみ
@@ -127,6 +156,7 @@ python -c "import secrets; print(secrets.token_urlsafe(32))"
 - `CRITICAL`: 致命的エラーのみ
 
 #### LOG_FILE
+
 **説明**: ログファイルのパス  
 **デフォルト**: `logs/weather_bot.log`  
 **例**: `LOG_FILE=/app/logs/weather_bot.log`
@@ -134,21 +164,25 @@ python -c "import secrets; print(secrets.token_urlsafe(32))"
 ### パフォーマンス設定
 
 #### JMA_API_RATE_LIMIT
-**説明**: 気象庁API の1分間あたりのリクエスト制限  
+
+**説明**: 気象庁 API の 1 分間あたりのリクエスト制限  
 **デフォルト**: `60`  
 **例**: `JMA_API_RATE_LIMIT=60`
 
 #### GEMINI_API_RATE_LIMIT
-**説明**: Gemini API の1分間あたりのリクエスト制限  
+
+**説明**: Gemini API の 1 分間あたりのリクエスト制限  
 **デフォルト**: `60`  
 **例**: `GEMINI_API_RATE_LIMIT=60`
 
 #### NOTIFICATION_RETRY_ATTEMPTS
+
 **説明**: 通知送信の再試行回数  
 **デフォルト**: `3`  
 **例**: `NOTIFICATION_RETRY_ATTEMPTS=3`
 
 #### NOTIFICATION_RETRY_DELAY
+
 **説明**: 通知送信の再試行間隔（秒）  
 **デフォルト**: `300`  
 **例**: `NOTIFICATION_RETRY_DELAY=300`
@@ -156,11 +190,13 @@ python -c "import secrets; print(secrets.token_urlsafe(32))"
 ### タイムゾーン設定
 
 #### DEFAULT_TIMEZONE
+
 **説明**: デフォルトタイムゾーン  
 **デフォルト**: `Asia/Tokyo`  
 **例**: `DEFAULT_TIMEZONE=Asia/Tokyo`
 
 **対応タイムゾーン例**:
+
 - `Asia/Tokyo` - 日本標準時
 - `UTC` - 協定世界時
 - `America/New_York` - 東部標準時
@@ -196,10 +232,15 @@ ENVIRONMENT=development
 DISCORD_TOKEN=your_prod_discord_token
 DISCORD_GUILD_ID=  # 空にしてグローバルコマンドを使用
 
-# データベース設定（PostgreSQL）
-POSTGRES_DB=weather_bot
-POSTGRES_USER=weather_user
-POSTGRES_PASSWORD=your_secure_password
+# データベース設定（SQLite）
+DATABASE_URL=sqlite:///data/weather_bot.db
+USE_POSTGRES=false
+
+# または PostgreSQL を使用する場合
+# USE_POSTGRES=true
+# POSTGRES_DB=weather_bot
+# POSTGRES_USER=weather_user
+# POSTGRES_PASSWORD=your_secure_password
 
 # Redis設定
 REDIS_PASSWORD=your_redis_password
@@ -224,11 +265,13 @@ ENVIRONMENT=production
 ## セキュリティ設定
 
 ### SECRET_KEY
+
 **説明**: アプリケーション用の秘密鍵  
-**形式**: 最低32文字のランダム文字列  
+**形式**: 最低 32 文字のランダム文字列  
 **例**: `SECRET_KEY=your_very_secure_secret_key_minimum_32_characters_long`
 
 **生成方法**:
+
 ```bash
 # Python を使用
 python -c "import secrets; print(secrets.token_urlsafe(32))"
@@ -241,6 +284,7 @@ uuidgen | tr -d '-'
 ```
 
 ### REDIS_PASSWORD
+
 **説明**: Redis のパスワード  
 **形式**: 強力なパスワード  
 **例**: `REDIS_PASSWORD=MySecureRedisPassword123!`
@@ -248,6 +292,7 @@ uuidgen | tr -d '-'
 ### 監視・管理用パスワード
 
 #### GRAFANA_PASSWORD
+
 **説明**: Grafana 管理者パスワード  
 **例**: `GRAFANA_PASSWORD=MySecureGrafanaPassword123!`
 
@@ -344,6 +389,7 @@ ENVIRONMENT=production
 
 **症状**: ボットがオンラインにならない  
 **解決方法**:
+
 ```bash
 # トークンの形式を確認
 echo $DISCORD_TOKEN | wc -c  # 70文字程度であることを確認
@@ -356,6 +402,7 @@ echo $DISCORD_TOKEN | wc -c  # 70文字程度であることを確認
 
 **症状**: データベース関連のエラー  
 **解決方法**:
+
 ```bash
 # 環境変数を確認
 echo "DB: $POSTGRES_DB"
@@ -370,6 +417,7 @@ docker-compose exec db psql -U $POSTGRES_USER -d $POSTGRES_DB -c "SELECT 1;"
 
 **症状**: デフォルト値が使用される  
 **解決方法**:
+
 ```bash
 # .env ファイルの存在確認
 ls -la .env
@@ -385,6 +433,7 @@ chmod 600 .env
 
 **症状**: パスワードが正しく認識されない  
 **解決方法**:
+
 ```bash
 # 特殊文字をエスケープまたは引用符で囲む
 POSTGRES_PASSWORD='MyPassword!@#$%'
