@@ -78,9 +78,12 @@ class Config:
             # 本番環境設定
             if not self.LOG_LEVEL:
                 self.LOG_LEVEL = 'WARNING'
-            # PostgreSQLの使用を推奨
+            # PostgreSQLの使用を推奨するが、SQLiteも許可
             if self.USE_POSTGRES and 'sqlite' in self.DATABASE_URL:
                 self.DATABASE_URL = 'postgresql://weather_user:weather_password@db:5432/weather_bot'
+            # SQLiteを使用する場合はデフォルトパスを設定
+            elif 'sqlite' in self.DATABASE_URL and not self.DATABASE_URL.endswith('weather_bot.db'):
+                self.DATABASE_URL = 'sqlite:///data/weather_bot.db'
         
         # ログファイルパスの調整
         if self.LOG_FILE and not os.path.isabs(self.LOG_FILE):
