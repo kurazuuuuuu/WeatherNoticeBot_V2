@@ -3,6 +3,7 @@
 import asyncio
 import logging
 import time
+import os
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator, Optional, Dict, Any, List
 from dataclasses import dataclass, field
@@ -16,6 +17,8 @@ from sqlalchemy.exc import SQLAlchemyError, OperationalError, DisconnectionError
 
 from src.config import config
 from src.models.user import Base
+# サーバー設定モデルをインポートしてテーブル作成に含める
+from src.models.server_config import ServerConfig
 
 logger = logging.getLogger(__name__)
 
@@ -212,22 +215,47 @@ class DatabaseManager:
                     pool_pre_ping=True,
                     pool_recycle=3600  # 1時間でコネクションをリサイクル
                 )
-            else:
+            elif async_url.startswith('postgresql'):
                 # PostgreSQL configuration
-                self.async_engine = create_async_engine(
-                    async_url,
-                    echo=False,
-                    pool_size=10,
-                    max_overflow=20,
-                    pool_pre_ping=True,
-                    pool_recycle=3600,
-                    connect_args={
-                        "connect_timeout": 10,
-                        "server_settings": {
-                            "application_name": "discord_weather_bot",
+                # 環境に応じた設定
+                if config.ENVIRONMENT == 'production':
+                    # 本番環境ではより多くのコネクションとタイムアウト設定
+                    self.async_engine = create_async_engine(
+                        async_url,
+                        echo=False,
+                        pool_size=20,
+                        max_overflow=30,
+                        pool_pre_ping=True,
+                        pool_recycle=1800,  # 30分でコネクションをリサイクル
+                        pool_timeout=30,    # 30秒のタイムアウト
+                        connect_args={
+                            "connect_timeout": 10,
+                            "server_settings": {
+                                "application_name": f"discord_weather_bot_{config.ENVIRONMENT}",
+                                "statement_timeout": "30000",  # 30秒のステートメントタイムアウト
+                                "idle_in_transaction_session_timeout": "60000",  # 60秒のアイドルタイムアウト
+                            }
                         }
-                    }
-                )
+                    )
+                else:
+                    # 開発/ステージング環境
+                    self.async_engine = create_async_engine(
+                        async_url,
+                        echo=False,
+                        pool_size=10,
+                        max_overflow=20,
+                        pool_pre_ping=True,
+                        pool_recycle=3600,
+                        connect_args={
+                            "connect_timeout": 10,
+                            "server_settings": {
+                                "application_name": f"discord_weather_bot_{config.ENVIRONMENT}",
+                            }
+                        }
+                    )
+            else:
+                # その他のデータベース（未対応）
+                raise ValueError(f"未対応のデータベースタイプ: {async_url}")
             
             # Create sync engine for migrations
             sync_url = self._get_sync_url(self.database_url)
@@ -240,15 +268,40 @@ class DatabaseManager:
                     connect_args={"check_same_thread": False},
                     pool_pre_ping=True
                 )
+            elif sync_url.startswith('postgresql'):
+                # 環境に応じた設定
+                if config.ENVIRONMENT == 'production':
+                    # 本番環境設定
+                    self.sync_engine = create_engine(
+                        sync_url,
+                        echo=False,
+                        pool_size=10,
+                        max_overflow=20,
+                        pool_pre_ping=True,
+                        pool_recycle=1800,
+                        pool_timeout=30,
+                        connect_args={
+                            "connect_timeout": 10,
+                            "application_name": f"discord_weather_bot_{config.ENVIRONMENT}_sync",
+                        }
+                    )
+                else:
+                    # 開発/ステージング環境
+                    self.sync_engine = create_engine(
+                        sync_url,
+                        echo=False,
+                        pool_size=5,
+                        max_overflow=10,
+                        pool_pre_ping=True,
+                        pool_recycle=3600,
+                        connect_args={
+                            "connect_timeout": 10,
+                            "application_name": f"discord_weather_bot_{config.ENVIRONMENT}_sync",
+                        }
+                    )
             else:
-                self.sync_engine = create_engine(
-                    sync_url,
-                    echo=False,
-                    pool_size=10,
-                    max_overflow=20,
-                    pool_pre_ping=True,
-                    pool_recycle=3600
-                )
+                # その他のデータベース（未対応）
+                raise ValueError(f"未対応のデータベースタイプ: {sync_url}")
             
             # Create session factories
             self.async_session_factory = async_sessionmaker(
