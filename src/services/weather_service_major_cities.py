@@ -194,4 +194,3 @@ class WeatherServiceMajorCities:
             }
             for code, info in JAPAN_REGIONS.items()
         ]
-</text>

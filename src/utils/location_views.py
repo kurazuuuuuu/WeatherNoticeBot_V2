@@ -130,4 +130,3 @@ class CityActionView(discord.ui.View):
             custom_id=f"set_location:{city_code}:{city_name}",
             emoji="📍"
         ))
-</text>

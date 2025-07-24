@@ -99,8 +99,8 @@ class WeatherCommands(commands.Cog):
                 "天気情報の取得中にエラーが発生しました。",
                 "general"
             )
-            await interaction.followup.send(embed=error_embed)
-    
+            await interaction.followup.send(embed=error_embed)  
+  
     @app_commands.command(name="forecast", description="指定した地域の天気予報を取得します")
     @app_commands.describe(location="天気予報を取得したい地域名（省略時は登録済みの地域を使用）")
     async def forecast(self, interaction: discord.Interaction, location: str = None):
@@ -192,8 +192,8 @@ class WeatherCommands(commands.Cog):
                 "天気予報の取得中にエラーが発生しました。",
                 "general"
             )
-            await interaction.followup.send(embed=error_embed)
-    
+            await interaction.followup.send(embed=error_embed)    
+
     @app_commands.command(name="weather-alerts", description="指定した地域の気象警報・注意報を取得します")
     @app_commands.describe(location="気象警報を取得したい地域名（省略時は登録済みの地域を使用）")
     async def weather_alerts(self, interaction: discord.Interaction, location: str = None):
@@ -258,8 +258,8 @@ class WeatherCommands(commands.Cog):
                 "気象警報の取得中にエラーが発生しました。",
                 "general"
             )
-            await interaction.followup.send(embed=error_embed)
-    
+            await interaction.followup.send(embed=error_embed) 
+   
     @app_commands.command(name="locations", description="主要都市の一覧を表示します")
     @app_commands.describe(region="表示する地域（例: kanto, kinki, kyushu）")
     async def locations(self, interaction: discord.Interaction, region: str = None):
@@ -330,8 +330,8 @@ class WeatherCommands(commands.Cog):
                 "主要都市リストの取得中にエラーが発生しました。",
                 "general"
             )
-            await interaction.followup.send(embed=error_embed)
-    
+            await interaction.followup.send(embed=error_embed)    
+
     @commands.Cog.listener()
     async def on_interaction(self, interaction: discord.Interaction):
         """インタラクションイベントのリスナー"""
@@ -421,8 +421,8 @@ class WeatherCommands(commands.Cog):
             try:
                 await interaction.followup.send(embed=error_embed, ephemeral=True)
             except:
-                pass
-    
+                pass 
+   
     async def _get_area_code(self, discord_id: int, location: str = None) -> str:
         """地域コードを取得するヘルパーメソッド"""
         try:
@@ -498,4 +498,3 @@ class WeatherCommands(commands.Cog):
 async def setup(bot):
     """Cogをボットに追加"""
     await bot.add_cog(WeatherCommands(bot))
-</text>

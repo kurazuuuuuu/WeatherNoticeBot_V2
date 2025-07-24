@@ -9,65 +9,13 @@ import logging
 import json
 import time
 from typing import Dict, List, Optional, Any
-from dataclasses import dataclass
 from datetime import datetime, date
 import aiohttp
 from aiohttp import ClientTimeout, ClientError, ClientResponseError
 
 from ..models.weather import AreaInfo, WeatherData, ForecastData, AlertData
 from ..models.major_cities import MajorCity, RegionCities, MAJOR_CITIES_DATA, PREFECTURE_TO_REGION, JAPAN_REGIONS
-
-
-# データクラス定義
-@dataclass
-class AreaInfo:
-    """地域情報"""
-    code: str
-    name: str
-    en_name: str
-    kana: str
-    parent: str
-
-
-@dataclass
-class WeatherData:
-    """天気データ"""
-    area_name: str
-    area_code: str
-    weather_code: str
-    weather_description: str
-    wind: str
-    wave: str
-    temperature: Optional[float]
-    precipitation_probability: int
-    timestamp: datetime
-    publish_time: datetime
-
-
-@dataclass
-class ForecastData:
-    """天気予報データ"""
-    date: date
-    weather_code: str
-    weather_description: str
-    temp_min: Optional[float]
-    temp_max: Optional[float]
-    temp_min_upper: Optional[float]
-    temp_min_lower: Optional[float]
-    temp_max_upper: Optional[float]
-    temp_max_lower: Optional[float]
-    precipitation_probability: int
-    reliability: str
-
-
-@dataclass
-class AlertData:
-    """気象警報データ"""
-    title: str
-    description: str
-    severity: str
-    issued_at: datetime
-    area_codes: List[str]
+from .weather_service_major_cities import WeatherServiceMajorCities
 
 
 class WeatherAPIError(Exception):

@@ -125,8 +125,8 @@ class WeatherEmbedBuilder:
         
         # デフォルト
         "default": "🌤️"
-    }
-    
+    }    
+
     # 天気に応じた色設定（摂氏温度に適した色合い）
     WEATHER_COLORS = {
         "sunny": 0xFFD700,      # 金色（晴れ）
@@ -246,8 +246,8 @@ class WeatherEmbedBuilder:
         elif code == "4":  # 雪系
             return cls.WEATHER_COLORS["snowy"]
         else:
-            return cls.WEATHER_COLORS["default"]
-    
+            return cls.WEATHER_COLORS["default"]    
+
     @classmethod
     def create_current_weather_embed(
         cls, 
@@ -519,8 +519,8 @@ class WeatherEmbedBuilder:
         footer_text = footer_messages.get(error_type, footer_messages["general"])
         embed.set_footer(text=footer_text)
         
-        return embed
-    
+        return embed    
+
     @classmethod
     def create_paginated_forecast_embeds(
         cls, 
@@ -624,8 +624,8 @@ class WeatherEmbedBuilder:
             timestamp=datetime.now()
         )
         
-        return embed
-    
+        return embed    
+
     @classmethod
     def split_long_message(cls, message: str, max_length: int = 2000) -> List[str]:
         """
@@ -765,8 +765,8 @@ class WeatherEmbedBuilder:
         if embed.footer and embed.footer.text and len(embed.footer.text) > 2048:
             embed.set_footer(text=embed.footer.text[:2045] + "...")
         
-        return embed
-    
+        return embed   
+ 
     @classmethod
     def create_locations_embed(
         cls,
@@ -879,4 +879,3 @@ class WeatherEmbedBuilder:
             embeds.append(embed)
         
         return embeds
-</text>
