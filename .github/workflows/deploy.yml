@@ -49,12 +49,18 @@ jobs:
         echo "🛠️ Dockerイメージをビルドします..."
         docker compose build
     
-    - name: 7. アプリケーションを起動
+    - name: 7. データベースマイグレーションを実行
+      run: |
+        echo "🗄️ データベースマイグレーションを実行します..."
+        docker compose run --rm weather-bot python -m alembic upgrade head
+        echo "✅ データベースマイグレーションが完了しました"
+
+    - name: 8. アプリケーションを起動
       run: |
         echo "🚀 アプリケーションを起動します..."
         docker compose up -d
     
-    - name: 8. ヘルスチェックによる起動確認
+    - name: 9. ヘルスチェックによる起動確認
       run: |
         echo "🩺 起動状態を確認します..."
         max_attempts=30
@@ -87,6 +93,6 @@ jobs:
           exit 1
         fi
     
-    - name: 9. デプロイ完了通知
+    - name: 10. デプロイ完了通知
       run: |
         echo "🎉 デプロイが正常に完了しました！"
