@@ -39,8 +39,8 @@ class WeatherBot(commands.Bot):
         
         # スケジューラーの初期化（環境に応じた設定）
         try:
-            from src.services.scheduler_service import init_scheduler
-            await init_scheduler()
+            from src.services.scheduler_service_init import init_scheduler
+            await init_scheduler(self)
             logger.info("スケジューラーを初期化しました")
         except Exception as e:
             logger.error(f"スケジューラーの初期化に失敗しました: {e}")
@@ -143,7 +143,7 @@ class WeatherBot(commands.Bot):
         
         # 通知スケジューラーの開始
         try:
-            from src.services.scheduler_service import start_scheduler
+            from src.services.scheduler_service_init import start_scheduler
             await start_scheduler()
             logger.info("通知スケジューラーを開始しました")
         except Exception as e:
@@ -172,6 +172,15 @@ class WeatherBot(commands.Bot):
     async def close(self):
         """ボットのシャットダウン処理"""
         logger.info("ボットをシャットダウン中...")
+        
+        # スケジューラーの停止
+        try:
+            from src.services.scheduler_service_init import stop_scheduler
+            await stop_scheduler()
+            logger.info("スケジューラーを停止しました")
+        except Exception as e:
+            logger.error(f"スケジューラーの停止に失敗しました: {e}")
+        
         await super().close()
         logger.info("ボットのシャットダウンが完了しました")
 

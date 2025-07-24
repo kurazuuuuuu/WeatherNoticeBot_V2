@@ -3,6 +3,9 @@
 APSchedulerを使用してユーザーごとの定時通知を管理する
 """
 
+# 初期化と管理用の関数をインポート
+from .scheduler_service_init import init_scheduler, start_scheduler, stop_scheduler, get_scheduler_service
+
 import asyncio
 import logging
 from datetime import datetime, time
