@@ -204,4 +204,3 @@ MAJOR_CITIES_DATA = [
 
 # 地域コードのキャッシュ（初期化時に設定される）
 CITY_CODE_CACHE = {}
-</text>
