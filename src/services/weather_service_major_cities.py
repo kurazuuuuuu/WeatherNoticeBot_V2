@@ -8,6 +8,7 @@ import logging
 from typing import Dict, List, Optional, Tuple
 from ..models.weather import AreaInfo
 from ..models.major_cities import MajorCity, RegionCities, MAJOR_CITIES_DATA, PREFECTURE_TO_REGION, JAPAN_REGIONS, CITY_CODE_CACHE
+from ..models.city_codes import CITY_CODES
 
 
 class WeatherServiceMajorCities:
@@ -38,7 +39,51 @@ class WeatherServiceMajorCities:
             city_name = city_data["name"]
             prefecture = city_data["prefecture"]
             
-            # キャッシュから地域コードを取得
+            # 1. 事前定義された地域コードを確認
+            if city_name in CITY_CODES:
+                area_code = CITY_CODES[city_name]
+                area_info = None
+                
+                # 地域コードが存在するか確認
+                if area_code in area_dict:
+                    area_info = area_dict[area_code]
+                else:
+                    # 親地域を探す
+                    parent_code = area_code[:4] + "00"
+                    if parent_code in area_dict:
+                        area_code = parent_code
+                        area_info = area_dict[parent_code]
+                    else:
+                        # 都道府県レベルのコードを探す
+                        prefecture_code = area_code[:2] + "0000"
+                        if prefecture_code in area_dict:
+                            area_code = prefecture_code
+                            area_info = area_dict[prefecture_code]
+                
+                if area_info:
+                    # キャッシュに保存
+                    CITY_CODE_CACHE[city_name] = area_code
+                    
+                    # 地域を特定
+                    region_code = PREFECTURE_TO_REGION.get(prefecture, "other")
+                    
+                    # MajorCityオブジェクトを作成
+                    major_city = MajorCity(
+                        code=area_code,
+                        name=city_data["name"],
+                        en_name=city_data["en_name"],
+                        kana=city_data["kana"],
+                        parent=area_info.parent,
+                        prefecture=prefecture,
+                        region=region_code
+                    )
+                    
+                    # 地域リストに追加
+                    if region_code in region_cities:
+                        region_cities[region_code].append(major_city)
+                    continue
+            
+            # 2. キャッシュから地域コードを取得
             if city_name in CITY_CODE_CACHE:
                 area_code = CITY_CODE_CACHE[city_name]
                 area_info = area_dict.get(area_code)
@@ -62,7 +107,7 @@ class WeatherServiceMajorCities:
                         region_cities[region_code].append(major_city)
                     continue
             
-            # 地域コードを検索
+            # 3. 地域コードを検索
             area_code, area_info = await self._find_city_code(city_name, area_dict)
             
             if area_code and area_info:
@@ -112,14 +157,31 @@ class WeatherServiceMajorCities:
         Returns:
             (地域コード, 地域情報)のタプル。見つからない場合は(None, None)
         """
+        # 1. 事前定義された地域コードを確認
+        if city_name in CITY_CODES:
+            area_code = CITY_CODES[city_name]
+            if area_code in area_dict:
+                return area_code, area_dict[area_code]
+            
+            # 地域コードが見つからない場合は、親地域を探す
+            # 例: 130010 (東京地方) が見つからない場合、130000 (東京都) を探す
+            parent_code = area_code[:4] + "00"
+            if parent_code in area_dict:
+                return parent_code, area_dict[parent_code]
+                
+            # 都道府県レベルのコードを探す
+            prefecture_code = area_code[:2] + "0000"
+            if prefecture_code in area_dict:
+                return prefecture_code, area_dict[prefecture_code]
+        
         matches = []
         
-        # 完全一致検索
+        # 2. 完全一致検索
         for area_code, area_info in area_dict.items():
             if city_name == area_info.name and self._is_city_code(area_code):
                 return area_code, area_info
         
-        # 部分一致検索
+        # 3. 部分一致検索
         for area_code, area_info in area_dict.items():
             if city_name in area_info.name and self._is_city_code(area_code):
                 matches.append((area_code, area_info))
