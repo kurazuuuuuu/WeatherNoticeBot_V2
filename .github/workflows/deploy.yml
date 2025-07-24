@@ -62,7 +62,7 @@ jobs:
         
         for i in $(seq 1 $max_attempts); do
           # docker-compose.yml内のサービス名を指定
-          health_status=$(docker inspect --format '{{.State.Health.Status}}' discord-weather-bot 2>/dev/null)
+          health_status=$(docker inspect --format '{{.State.Health.Status}}' weather-bot 2>/dev/null)
           
           if [ "$health_status" = "healthy" ]; then
             echo "✅ アプリケーションは正常に起動しました！"
@@ -70,7 +70,7 @@ jobs:
             break
           fi
           
-          container_state=$(docker inspect --format '{{.State.Status}}' discord-weather-bot 2>/dev/null)
+          container_state=$(docker inspect --format '{{.State.Status}}' weather-bot 2>/dev/null)
           if [ "$container_state" != "running" ]; then
              echo "❌ コンテナが起動していません。"
              docker compose logs

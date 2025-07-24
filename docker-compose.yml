@@ -2,7 +2,7 @@ services:
   # Discord Weather Bot
   weather-bot:
     build: .
-    container_name: discord-weather-bot
+    container_name: weather-bot
     restart: unless-stopped
     environment:
       # Discord設定
@@ -44,7 +44,7 @@ services:
     depends_on:
       - db
     healthcheck:
-      test: ["CMD", "python", "-c", "import asyncio; import aiohttp; print('Bot is healthy')"]
+      test: ["CMD", "python", "-c", "import os, sys; sys.path.append('/app'); from src.utils.health import check_health; sys.exit(0 if check_health() else 1)"]
       interval: 30s
       timeout: 10s
       retries: 3
