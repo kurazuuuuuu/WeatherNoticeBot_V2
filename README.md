@@ -5,9 +5,10 @@
 ## 🚀 機能
 
 ### 天気情報コマンド
-- **`/weather`** - 現在の天気情報を表示
-- **`/forecast`** - 5日間の天気予報を表示  
+- **`/weather`** - 現在の天気情報を表示（地域指定可能）
+- **`/forecast`** - 5日間の天気予報を表示
 - **`/weather-alerts`** - 気象警報・注意報を表示
+- **`/major-cities`** - 主要都市の天気情報を一覧表示
 
 ### ユーザー設定コマンド
 - **`/set-location`** - ユーザー個別の地域設定
@@ -24,16 +25,18 @@
 - 天気に応じた励ましメッセージ
 - フォールバック機能で安定動作
 
+### スケジューラー機能
+- 定時通知システム
+- ユーザー個別のスケジュール管理
+- 自動的な天気情報配信
+
 ## 🚀 クイックスタート
 
 ### 1. 初回セットアップ
 
 ```bash
-# セットアップスクリプトを実行
-./scripts/setup.sh
-
 # 環境変数を設定
-cp .env.docker .env
+cp .env.example .env
 # .envファイルを編集してDISCORD_TOKENとGEMINI_API_KEYを設定
 ```
 
@@ -41,28 +44,28 @@ cp .env.docker .env
 
 #### 本番環境
 ```bash
-# 簡単起動（推奨）
-./scripts/start.sh prod
-
-# または手動起動
-docker-compose up -d weather-bot
+# 本番環境での起動（デタッチモード）
+docker compose -f docker-compose.prod.yml up -d
 ```
 
 #### 開発環境
 ```bash
-# 開発モード（ホットリロード対応）
-./scripts/start.sh dev
+# 開発環境での起動（デタッチモード）
+docker compose -f docker-compose.dev.yml up -d
+```
 
-# または手動起動
-docker-compose -f docker-compose.dev.yml up
+#### 標準環境
+```bash
+# 標準設定での起動（デタッチモード）
+docker compose up -d
 ```
 
 #### 管理コマンド
 ```bash
-./scripts/start.sh stop      # 停止
-./scripts/start.sh restart   # 再起動
-./scripts/start.sh logs      # ログ表示
-./scripts/start.sh status    # 状態確認
+docker compose stop      # 停止
+docker compose restart   # 再起動
+docker compose logs -f   # ログ表示
+docker compose ps        # 状態確認
 ```
 
 ## 🛠️ ローカル開発
@@ -89,6 +92,19 @@ uv run alembic upgrade head
 uv run python src/bot.py
 ```
 
+### 開発用コマンド
+
+```bash
+# コードフォーマット
+uv run ruff format .
+
+# リンター実行
+uv run ruff check .
+
+# テスト実行
+uv run pytest
+```
+
 ## 📋 必要な設定
 
 ### Discord Bot設定
@@ -101,6 +117,8 @@ uv run python src/bot.py
 
 ### 環境変数
 
+詳細な環境変数の説明は[環境変数ドキュメント](docs/environment-variables.md)を参照してください。
+
 | 変数名 | 必須 | 説明 |
 |--------|------|------|
 | `DISCORD_TOKEN` | ✅ | DiscordボットのトークンID |
@@ -108,6 +126,7 @@ uv run python src/bot.py
 | `DATABASE_URL` | ❌ | データベース接続URL（デフォルト: SQLite） |
 | `DISCORD_GUILD_ID` | ❌ | テスト用サーバーID（開発時推奨） |
 | `LOG_LEVEL` | ❌ | ログレベル（デフォルト: INFO） |
+| `SCHEDULER_ENABLED` | ❌ | スケジューラー機能の有効化（デフォルト: true） |
 
 ## 🏗️ プロジェクト構造
 
@@ -123,8 +142,10 @@ WeatherNoticeBot_V2/
 │   │   └── admin_commands.py
 │   ├── services/           # ビジネスロジック
 │   │   ├── weather_service.py
+│   │   ├── weather_service_major_cities.py
 │   │   ├── user_service.py
-│   │   └── ai_service.py
+│   │   ├── ai_service.py
+│   │   └── scheduler_service.py
 │   ├── models/             # データモデル
 │   │   └── user.py
 │   └── utils/              # ユーティリティ
@@ -138,16 +159,25 @@ WeatherNoticeBot_V2/
 ├── debug/                  # デバッグ・開発用
 │   ├── debug_api.py        # 気象庁API構造確認
 │   ├── debug_forecast.py   # 天気予報API構造確認
+│   ├── check_area_codes.py # エリアコード確認
 │   └── run.py              # ボット起動用
-├── scripts/                # 運用スクリプト
-│   ├── setup.sh            # 初回セットアップ
-│   └── start.sh            # 起動・管理スクリプト
+├── docs/                   # ドキュメント
+│   ├── setup-guide.md      # セットアップガイド
+│   ├── user-guide.md       # ユーザーガイド
+│   ├── environment-variables.md # 環境変数説明
+│   ├── deployment.md       # デプロイメント手順
+│   └── troubleshooting-guide.md # トラブルシューティング
+├── .github/workflows/      # GitHub Actions
+│   ├── deploy.yml          # デプロイワークフロー
+│   └── rollback.yml        # ロールバックワークフロー
 ├── alembic/                # データベースマイグレーション
 ├── data/                   # データファイル（SQLite等）
 ├── logs/                   # ログファイル
-├── docker-compose.yml      # 本番環境用Docker設定
+├── docker-compose.yml      # 標準Docker設定
 ├── docker-compose.dev.yml  # 開発環境用Docker設定
-└── Dockerfile              # Dockerイメージ定義
+├── docker-compose.prod.yml # 本番環境用Docker設定
+├── Dockerfile              # Dockerイメージ定義
+└── pyproject.toml          # Python プロジェクト設定
 ```
 
 ## 🔧 Docker Compose構成
@@ -156,30 +186,37 @@ WeatherNoticeBot_V2/
 
 - **weather-bot**: メインのDiscordボット
 - **db**: PostgreSQL データベース（オプション）
-- **redis**: Redis キャッシュ（将来の機能拡張用）
 
 ### ボリューム
 
 - `./data`: データベースファイル（SQLite使用時）
 - `./logs`: ログファイル
 - `postgres_data`: PostgreSQLデータ
-- `redis_data`: Redisデータ
 
 ### ネットワーク
 
 - `weather-bot-network`: 内部通信用ネットワーク
 
+### 環境別設定
+
+- **docker-compose.yml**: 標準設定（SQLite使用）
+- **docker-compose.dev.yml**: 開発環境（ホットリロード対応）
+- **docker-compose.prod.yml**: 本番環境（PostgreSQL使用）
+
 ## 📊 監視・ヘルスチェック
 
 ```bash
 # サービス状態確認
-docker-compose ps
+docker compose ps
 
 # ヘルスチェック状態確認
-docker-compose exec weather-bot python -c "print('Bot is healthy')"
+docker compose exec weather-bot python -c "print('Bot is healthy')"
 
 # ログ監視
-docker-compose logs -f weather-bot
+docker compose logs -f weather-bot
+
+# 特定のサービスのログ監視
+docker compose logs -f db
 ```
 
 ## 🧪 テスト・デバッグ
@@ -187,13 +224,16 @@ docker-compose logs -f weather-bot
 ### テスト実行
 ```bash
 # 全テスト実行
-uv run python -m pytest tests/
+uv run pytest
 
 # 特定のテスト実行
-uv run python -m pytest tests/test_weather_service.py
+uv run pytest tests/test_weather_service.py
+
+# カバレッジ付きテスト実行
+uv run pytest --cov=src
 
 # Docker環境でのテスト実行
-docker-compose exec weather-bot python -m pytest tests/
+docker compose exec weather-bot python -m pytest tests/
 ```
 
 ### デバッグスクリプト
@@ -203,6 +243,9 @@ uv run python debug/debug_api.py
 
 # 天気予報API構造確認
 uv run python debug/debug_forecast.py
+
+# エリアコード確認
+uv run python debug/check_area_codes.py
 
 # ボット起動（デバッグ用）
 uv run python debug/run.py
@@ -224,21 +267,23 @@ DISCORD_GUILD_ID=your_test_server_id
 
 ## 🚨 トラブルシューティング
 
+詳細なトラブルシューティングガイドは[こちら](docs/troubleshooting-guide.md)を参照してください。
+
 ### よくある問題
 
 1. **ボットが起動しない**
    ```bash
    # ログを確認
-   docker-compose logs weather-bot
+   docker compose logs weather-bot
    
    # 環境変数を確認
-   docker-compose exec weather-bot env | grep DISCORD
+   docker compose exec weather-bot env | grep DISCORD
    ```
 
 2. **コマンドが表示されない**
    ```bash
    # コマンド同期状況を確認
-   docker-compose logs weather-bot | grep "コマンド"
+   docker compose logs weather-bot | grep "コマンド"
    
    # ギルドIDを設定して即座反映（開発時）
    echo "DISCORD_GUILD_ID=your_guild_id" >> .env
@@ -247,10 +292,10 @@ DISCORD_GUILD_ID=your_test_server_id
 3. **データベース接続エラー**
    ```bash
    # データベースサービス確認
-   docker-compose ps db
+   docker compose ps db
    
    # データベース接続テスト
-   docker-compose exec db psql -U weather_user -d weather_bot -c "SELECT 1;"
+   docker compose exec db psql -U weather_user -d weather_bot -c "SELECT 1;"
    ```
 
 4. **権限エラー**
@@ -265,9 +310,18 @@ DISCORD_GUILD_ID=your_test_server_id
 5. **AIメッセージが生成されない**
    ```bash
    # Gemini APIキーを確認
-   docker-compose exec weather-bot env | grep GEMINI
+   docker compose exec weather-bot env | grep GEMINI
    
    # フォールバック機能により基本動作は継続されます
+   ```
+
+6. **スケジューラーが動作しない**
+   ```bash
+   # スケジューラーサービスの状態確認
+   docker compose logs weather-bot | grep "scheduler"
+   
+   # 環境変数確認
+   docker compose exec weather-bot env | grep SCHEDULER_ENABLED
    ```
 
 ## 📝 ライセンス
@@ -288,9 +342,22 @@ DISCORD_GUILD_ID=your_test_server_id
 
 ## 🎯 今後の予定
 
-- [ ] 通知スケジューラーの実装
+- [x] 通知スケジューラーの実装
+- [x] 主要都市の天気情報表示機能
 - [ ] 複数地域の監視機能
 - [ ] 天気データのキャッシュ機能
 - [ ] Webダッシュボードの追加
 - [ ] 多言語対応
 - [ ] カスタム天気アラート
+- [ ] 気象データの統計分析機能
+
+## 📚 ドキュメント
+
+詳細なドキュメントは以下を参照してください：
+
+- [セットアップガイド](docs/setup-guide.md)
+- [ユーザーガイド](docs/user-guide.md)
+- [環境変数説明](docs/environment-variables.md)
+- [デプロイメント手順](docs/deployment.md)
+- [コマンドリファレンス](docs/command-reference.md)
+- [トラブルシューティング](docs/troubleshooting-guide.md)
