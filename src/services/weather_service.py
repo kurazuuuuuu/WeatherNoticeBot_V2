@@ -14,6 +14,9 @@ from datetime import datetime, date
 import aiohttp
 from aiohttp import ClientTimeout, ClientError, ClientResponseError
 
+from ..models.weather import AreaInfo, WeatherData, ForecastData, AlertData
+from ..models.major_cities import MajorCity, RegionCities, MAJOR_CITIES_DATA, PREFECTURE_TO_REGION, JAPAN_REGIONS
+
 
 # データクラス定義
 @dataclass
@@ -90,7 +93,7 @@ class WeatherAPITimeoutError(WeatherAPIError):
     pass
 
 
-class WeatherService:
+class WeatherService(WeatherServiceMajorCities):
     """気象庁APIサービス"""
     
     # 気象庁APIのベースURL

@@ -3,11 +3,14 @@
 import discord
 from discord.ext import commands
 from discord import app_commands
+from typing import Dict, List, Optional
+import json
 from src.utils.logging import logger
 from src.services.weather_service import WeatherService, WeatherAPIError
 from src.services.user_service import user_service
 from src.services.ai_service import AIMessageService
 from src.utils.embed_utils import WeatherEmbedBuilder
+from src.utils.location_views import LocationSelectView, CityActionView
 
 
 class WeatherCommands(commands.Cog):
@@ -33,7 +36,8 @@ class WeatherCommands(commands.Cog):
                 suggestions = [
                     "`/set-location 東京都` で地域を設定",
                     "正確な地域名を指定（例：大阪府、札幌市）",
-                    "`/my-settings` で現在の設定を確認"
+                    "`/my-settings` で現在の設定を確認",
+                    "`/locations` で主要都市一覧を表示"
                 ]
                 error_embed = WeatherEmbedBuilder.create_error_embed(
                     "地域情報エラー",
@@ -256,6 +260,169 @@ class WeatherCommands(commands.Cog):
             )
             await interaction.followup.send(embed=error_embed)
     
+    @app_commands.command(name="locations", description="主要都市の一覧を表示します")
+    @app_commands.describe(region="表示する地域（例: kanto, kinki, kyushu）")
+    async def locations(self, interaction: discord.Interaction, region: str = None):
+        """主要都市リストを表示するコマンド"""
+        await interaction.response.defer()
+        
+        try:
+            async with self.weather_service:
+                if region:
+                    # 指定された地域の主要都市を表示
+                    region_cities = await self.weather_service.get_city_by_region(region)
+                    
+                    if not region_cities:
+                        # 地域が見つからない場合は全地域リストを表示
+                        regions = await self.weather_service.get_all_regions()
+                        embed = WeatherEmbedBuilder.create_error_embed(
+                            "地域が見つかりません",
+                            f"指定された地域 '{region}' が見つかりませんでした。\n以下の地域コードを指定してください。",
+                            "not_found"
+                        )
+                        
+                        # 利用可能な地域リストを追加
+                        region_list = "\n".join([f"• {r['name']} ({r['en_name']}): `{r['code']}`" for r in regions])
+                        embed.add_field(
+                            name="利用可能な地域",
+                            value=region_list,
+                            inline=False
+                        )
+                        
+                        await interaction.followup.send(embed=embed)
+                        return
+                    
+                    # 都市リストを表示（ページネーション）
+                    embeds = WeatherEmbedBuilder.create_paginated_locations_embeds(
+                        region_cities, items_per_page=8
+                    )
+                    
+                    # 都市選択ビューを作成
+                    view = LocationSelectView(region_cities.cities)
+                    
+                    # 最初のページを送信（ビュー付き）
+                    await interaction.followup.send(
+                        embed=embeds[0],
+                        view=view
+                    )
+                    
+                    # 追加のページがある場合は順次送信（ビューなし）
+                    for embed in embeds[1:]:
+                        await interaction.followup.send(embed=embed)
+                else:
+                    # 地域リストを表示
+                    regions = await self.weather_service.get_all_regions()
+                    embed = WeatherEmbedBuilder.create_regions_list_embed(regions)
+                    await interaction.followup.send(embed=embed)
+        
+        except WeatherAPIError as e:
+            logger.error(f"主要都市リスト取得エラー: {e}")
+            error_embed = WeatherEmbedBuilder.create_error_embed(
+                "API エラー",
+                "主要都市リストの取得中にエラーが発生しました。しばらく時間をおいてからお試しください。",
+                "api_error"
+            )
+            await interaction.followup.send(embed=error_embed)
+        except Exception as e:
+            logger.error(f"locationsコマンドでエラーが発生しました: {e}")
+            error_embed = WeatherEmbedBuilder.create_error_embed(
+                "システムエラー",
+                "主要都市リストの取得中にエラーが発生しました。",
+                "general"
+            )
+            await interaction.followup.send(embed=error_embed)
+    
+    @commands.Cog.listener()
+    async def on_interaction(self, interaction: discord.Interaction):
+        """インタラクションイベントのリスナー"""
+        # ボタンクリックのみ処理
+        if not interaction.type == discord.InteractionType.component:
+            return
+            
+        # カスタムIDを取得
+        custom_id = interaction.data.get("custom_id", "")
+        
+        # 天気関連のボタンかどうかをチェック
+        if not custom_id.startswith(("weather:", "forecast:", "alerts:", "set_location:")):
+            return
+            
+        # カスタムIDを解析
+        parts = custom_id.split(":")
+        if len(parts) < 3:
+            return
+            
+        action = parts[0]
+        city_code = parts[1]
+        city_name = parts[2]
+        
+        # アクションに応じて処理
+        try:
+            await interaction.response.defer(ephemeral=action == "set_location")
+            
+            if action == "weather":
+                # 現在の天気を表示
+                async with self.weather_service:
+                    weather_data = await self.weather_service.get_current_weather(city_code)
+                
+                if weather_data:
+                    ai_message = await self._generate_ai_message(weather_data)
+                    embed = await self._create_weather_embed(weather_data, ai_message)
+                    await interaction.followup.send(embed=embed)
+                else:
+                    error_embed = WeatherEmbedBuilder.create_error_embed(
+                        "データ取得エラー",
+                        f"{city_name}の天気情報を取得できませんでした。",
+                        "api_error"
+                    )
+                    await interaction.followup.send(embed=error_embed)
+                    
+            elif action == "forecast":
+                # 天気予報を表示
+                async with self.weather_service:
+                    forecast_data = await self.weather_service.get_forecast(city_code, days=5)
+                
+                if forecast_data:
+                    embed = await self._create_forecast_embed(forecast_data, city_code)
+                    await interaction.followup.send(embed=embed)
+                else:
+                    error_embed = WeatherEmbedBuilder.create_error_embed(
+                        "データ取得エラー",
+                        f"{city_name}の天気予報を取得できませんでした。",
+                        "api_error"
+                    )
+                    await interaction.followup.send(embed=error_embed)
+                    
+            elif action == "alerts":
+                # 気象警報を表示
+                async with self.weather_service:
+                    alerts = await self.weather_service.get_weather_alerts(city_code)
+                
+                embed = await self._create_alerts_embed(alerts, city_code)
+                await interaction.followup.send(embed=embed)
+                
+            elif action == "set_location":
+                # 位置を設定
+                await user_service.set_user_location(interaction.user.id, city_code, city_name)
+                
+                success_embed = WeatherEmbedBuilder.create_success_embed(
+                    "位置設定完了",
+                    f"あなたの位置情報を **{city_name}** に設定しました。\n"
+                    "これからは `/weather` コマンドで地域を指定せずに天気情報を取得できます。"
+                )
+                await interaction.followup.send(embed=success_embed, ephemeral=True)
+                
+        except Exception as e:
+            logger.error(f"ボタンインタラクションエラー: {e}")
+            error_embed = WeatherEmbedBuilder.create_error_embed(
+                "エラー",
+                "処理中にエラーが発生しました。",
+                "general"
+            )
+            try:
+                await interaction.followup.send(embed=error_embed, ephemeral=True)
+            except:
+                pass
+    
     async def _get_area_code(self, discord_id: int, location: str = None) -> str:
         """地域コードを取得するヘルパーメソッド"""
         try:
@@ -326,10 +493,9 @@ class WeatherCommands(commands.Cog):
             pass
         
         return WeatherEmbedBuilder.create_alert_embed(alerts, area_name)
-    
-
 
 
 async def setup(bot):
     """Cogをボットに追加"""
     await bot.add_cog(WeatherCommands(bot))
+</text>

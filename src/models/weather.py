@@ -13,6 +13,8 @@ class AreaInfo:
     en_name: str
     kana: str
     parent: str
+    prefecture: Optional[str] = None
+    region: Optional[str] = None
 
 
 @dataclass
