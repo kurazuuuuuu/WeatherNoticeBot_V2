@@ -3,8 +3,21 @@
 APSchedulerを使用してユーザーごとの定時通知を管理する
 """
 
-# 初期化と管理用の関数をインポート
-from .scheduler_service_init import init_scheduler, start_scheduler, stop_scheduler, get_scheduler_service
+import asyncio
+import logging
+from datetime import datetime, time
+from typing import Dict, List, Optional
+
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.cron import CronTrigger
+from apscheduler.jobstores.memory import MemoryJobStore
+from apscheduler.executors.asyncio import AsyncIOExecutor
+
+import discord
+
+from ..models.user import User
+from ..services.user_service import UserService
+from ..services.notification_service import NotificationService
 
 import asyncio
 import logging
@@ -20,6 +33,13 @@ from ..models.user import User
 from ..services.user_service import UserService
 from ..services.notification_service import NotificationService
 
+logger = logging.getLogger(__name__)
+
+
+# グローバルなスケジューラーサービスのインスタンス
+_scheduler_service: Optional['SchedulerService'] = None
+
+# グローバルなロガー
 logger = logging.getLogger(__name__)
 
 
@@ -288,3 +308,91 @@ class SchedulerService:
                 for job in sorted(jobs, key=lambda x: x.next_run_time or datetime.max)[:5]
             ]
         }
+# グローバル関数
+
+async def init_scheduler(bot_client: Optional[discord.Client] = None) -> SchedulerService:
+    """
+    スケジューラーサービスを初期化する
+    
+    Args:
+        bot_client: Discordボットクライアント（オプション）
+        
+    Returns:
+        初期化されたSchedulerServiceインスタンス
+    """
+    global _scheduler_service
+    
+    if _scheduler_service is None:
+        logger.info("スケジューラーサービスを初期化しています...")
+        
+        # 依存サービスの初期化
+        user_service = UserService()
+        notification_service = NotificationService(bot_client=bot_client)
+        
+        # スケジューラーサービスの作成
+        _scheduler_service = SchedulerService(
+            user_service=user_service,
+            notification_service=notification_service
+        )
+        
+        logger.info("スケジューラーサービスが初期化されました")
+    elif bot_client is not None:
+        # ボットクライアントの更新
+        _scheduler_service.notification_service.set_bot_client(bot_client)
+        logger.info("スケジューラーサービスのボットクライアントを更新しました")
+    
+    return _scheduler_service
+
+
+async def start_scheduler() -> bool:
+    """
+    スケジューラーサービスを開始する
+    
+    Returns:
+        開始成功時はTrue、失敗時はFalse
+    """
+    global _scheduler_service
+    
+    if _scheduler_service is None:
+        logger.error("スケジューラーサービスが初期化されていません")
+        return False
+    
+    try:
+        await _scheduler_service.start()
+        logger.info("スケジューラーサービスを開始しました")
+        return True
+    except Exception as e:
+        logger.error(f"スケジューラーサービスの開始に失敗しました: {e}")
+        return False
+
+
+async def stop_scheduler() -> bool:
+    """
+    スケジューラーサービスを停止する
+    
+    Returns:
+        停止成功時はTrue、失敗時はFalse
+    """
+    global _scheduler_service
+    
+    if _scheduler_service is None:
+        logger.warning("スケジューラーサービスが初期化されていません")
+        return False
+    
+    try:
+        await _scheduler_service.stop()
+        logger.info("スケジューラーサービスを停止しました")
+        return True
+    except Exception as e:
+        logger.error(f"スケジューラーサービスの停止に失敗しました: {e}")
+        return False
+
+
+def get_scheduler_service() -> Optional[SchedulerService]:
+    """
+    現在のスケジューラーサービスインスタンスを取得する
+    
+    Returns:
+        SchedulerServiceインスタンス、初期化されていない場合はNone
+    """
+    return _scheduler_service
