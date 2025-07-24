@@ -1,0 +1,3 @@
+# 推奨地域コード
+RECOMMENDED_CITY_CODES = {
+}
