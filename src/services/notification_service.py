@@ -125,7 +125,15 @@ class NotificationService:
         """
         try:
             async with self.weather_service:
-                return await self.weather_service.get_current_weather(area_code)
+                # 天気データを取得
+                weather_data = await self.weather_service.get_current_weather(area_code)
+                
+                if weather_data:
+                    # 単純に元のオブジェクトをそのまま返す
+                    # weather_data_to_contextが安全に処理するように修正済み
+                    return weather_data
+                
+                return None
                 
         except Exception as e:
             logger.warning(f"天気データ取得エラー (試行 {retries + 1}/{self.MAX_RETRIES}): {str(e)}")

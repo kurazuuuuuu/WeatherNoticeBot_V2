@@ -69,6 +69,11 @@ class WeatherService:
         url = f"{self.BASE_URL}/common/const/area.json"
         # 地域コード、地域名、親地域の情報を返す
         pass
+        
+    async def get_major_cities(self) -> Dict[str, List[AreaInfo]]:
+        # 主要都市のリストを地域別に取得
+        # 地域ごとにグループ化された主要都市情報を返す
+        pass
 
     async def get_current_weather(self, area_code: str) -> WeatherData:
         # 気象庁APIから現在の天気を取得
@@ -144,6 +149,7 @@ class NotificationService:
 - `/weather [location]` - 現在の天気情報を取得
 - `/forecast [location]` - 5 日間の天気予報を取得
 - `/weather-alerts [location]` - 気象警報・注意報を取得
+- `/locations` - 主要都市のリストを表示
 
 #### User Commands (`commands/user_commands.py`)
 
@@ -185,6 +191,8 @@ class AreaInfo:
     en_name: str
     kana: str
     parent: str
+    prefecture: Optional[str] = None
+    region: Optional[str] = None
 
 @dataclass
 class WeatherData:

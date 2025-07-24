@@ -91,3 +91,16 @@ This feature involves creating a Discord bot that provides weather information t
 2. WHEN displaying weather conditions THEN the bot SHALL include relevant weather emojis and icons
 3. WHEN showing temperature data THEN the bot SHALL display temperatures in Celsius (primary for Japan)
 4. WHEN the response is too long THEN the bot SHALL format the information in multiple embeds or use pagination
+
+### Requirement 9
+
+**User Story:** As a Discord user, I want to see a list of major cities available for weather queries, so that I can easily select a valid location without guessing location names.
+
+#### Acceptance Criteria
+
+1. WHEN a user types `/locations` THEN the bot SHALL display a list of major Japanese cities available for weather queries
+2. WHEN displaying the cities list THEN the bot SHALL organize cities by region (Kanto, Kansai, Kyushu, etc.) for better readability
+3. WHEN the cities list is displayed THEN it SHALL include prefecture information alongside city names
+4. WHEN a user selects a city from the list THEN the bot SHALL provide an easy way to use that city name in weather commands
+5. WHEN the cities list is too long for a single message THEN the bot SHALL use pagination or multiple embeds to display all cities
+6. WHEN displaying cities THEN the bot SHALL include both Japanese and romanized names for international users
