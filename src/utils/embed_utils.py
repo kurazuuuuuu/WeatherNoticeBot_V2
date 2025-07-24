@@ -2,8 +2,9 @@
 
 import discord
 from datetime import datetime
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Dict
 from src.models.weather import WeatherData, ForecastData, AlertData
+from src.models.major_cities import RegionCities, MajorCity
 
 
 class WeatherEmbedBuilder:
@@ -136,6 +137,32 @@ class WeatherEmbedBuilder:
         "hot": 0xFF4500,        # オレンジレッド（猛暑）
         "cold": 0x87CEFA,       # ライトスカイブルー（寒い）
         "default": 0x00BFFF     # ディープスカイブルー（デフォルト）
+    }
+    
+    # 地域に応じた色設定
+    REGION_COLORS = {
+        "hokkaido": 0x87CEFA,   # ライトスカイブルー（北海道）
+        "tohoku": 0x98FB98,     # ペールグリーン（東北）
+        "kanto": 0xFFA07A,      # ライトサーモン（関東）
+        "chubu": 0xFFDAB9,      # ピーチパフ（中部）
+        "kinki": 0xFFB6C1,      # ライトピンク（近畿）
+        "chugoku": 0xFFD700,    # ゴールド（中国）
+        "shikoku": 0xADD8E6,    # ライトブルー（四国）
+        "kyushu": 0xDDA0DD,     # プラム（九州・沖縄）
+        "default": 0x00BFFF     # ディープスカイブルー（デフォルト）
+    }
+    
+    # 地域に応じた絵文字
+    REGION_EMOJIS = {
+        "hokkaido": "🏔️",  # 北海道
+        "tohoku": "🌲",     # 東北
+        "kanto": "🏙️",     # 関東
+        "chubu": "⛰️",     # 中部
+        "kinki": "🏯",     # 近畿
+        "chugoku": "🌉",   # 中国
+        "shikoku": "🌊",   # 四国
+        "kyushu": "🌋",    # 九州・沖縄
+        "default": "🗾"    # デフォルト
     }
     
     @classmethod
@@ -739,3 +766,117 @@ class WeatherEmbedBuilder:
             embed.set_footer(text=embed.footer.text[:2045] + "...")
         
         return embed
+    
+    @classmethod
+    def create_locations_embed(
+        cls,
+        region_cities: RegionCities,
+        page: int = 1,
+        items_per_page: int = 10
+    ) -> discord.Embed:
+        """
+        主要都市リスト用のEmbedを作成
+        
+        Args:
+            region_cities: 地域ごとの主要都市情報
+            page: 現在のページ番号（1から開始）
+            items_per_page: 1ページあたりの都市数
+            
+        Returns:
+            主要都市リスト用のEmbed
+        """
+        region_code = next((code for code, info in cls.REGION_EMOJIS.items() 
+                          if info == region_cities.region_name), "default")
+        color = cls.REGION_COLORS.get(region_code, cls.REGION_COLORS["default"])
+        emoji = cls.REGION_EMOJIS.get(region_code, cls.REGION_EMOJIS["default"])
+        
+        embed = discord.Embed(
+            title=f"{emoji} {region_cities.region_name}の主要都市",
+            description=f"{region_cities.region_name}（{region_cities.region_en_name}）地方の主要都市一覧です。",
+            color=color,
+            timestamp=datetime.now()
+        )
+        
+        # ページネーション
+        cities = region_cities.cities
+        total_cities = len(cities)
+        total_pages = (total_cities + items_per_page - 1) // items_per_page
+        
+        # ページ番号の調整
+        page = max(1, min(page, total_pages))
+        
+        # 表示する都市の範囲を計算
+        start_idx = (page - 1) * items_per_page
+        end_idx = min(start_idx + items_per_page, total_cities)
+        
+        # 都市情報を追加
+        for i, city in enumerate(cities[start_idx:end_idx], start=1):
+            field_name = f"{i}. {city.name} ({city.en_name})"
+            field_value = f"**都道府県**: {city.prefecture}\n**読み方**: {city.kana}\n**コード**: {city.code}"
+            embed.add_field(name=field_name, value=field_value, inline=True)
+            
+            # 2つごとに改行を入れる
+            if i % 2 == 0 and i < end_idx - start_idx:
+                embed.add_field(name="\u200b", value="\u200b", inline=False)
+        
+        # ページ情報をフッターに追加
+        embed.set_footer(text=f"ページ {page}/{total_pages} (全{total_cities}件) | 天気コマンドで都市名を指定できます")
+        
+        return embed
+    
+    @classmethod
+    def create_regions_list_embed(cls, regions: List[Dict[str, str]]) -> discord.Embed:
+        """
+        地域一覧用のEmbedを作成
+        
+        Args:
+            regions: 地域情報のリスト
+            
+        Returns:
+            地域一覧用のEmbed
+        """
+        embed = discord.Embed(
+            title="🗾 日本の地域一覧",
+            description="天気情報を取得できる日本の地域一覧です。\n地域を選択して主要都市を表示できます。",
+            color=cls.REGION_COLORS["default"],
+            timestamp=datetime.now()
+        )
+        
+        # 地域情報を追加
+        for region in regions:
+            emoji = cls.REGION_EMOJIS.get(region["code"], cls.REGION_EMOJIS["default"])
+            field_name = f"{emoji} {region['name']} ({region['en_name']})"
+            field_value = f"コード: `{region['code']}`\n`/locations {region['code']}` で都市一覧を表示"
+            embed.add_field(name=field_name, value=field_value, inline=True)
+        
+        embed.set_footer(text="地域を選択して主要都市の一覧を表示できます")
+        
+        return embed
+    
+    @classmethod
+    def create_paginated_locations_embeds(
+        cls,
+        region_cities: RegionCities,
+        items_per_page: int = 10
+    ) -> List[discord.Embed]:
+        """
+        ページネーション対応の主要都市リストEmbedリストを作成
+        
+        Args:
+            region_cities: 地域ごとの主要都市情報
+            items_per_page: 1ページあたりの都市数
+            
+        Returns:
+            Embedのリスト
+        """
+        cities = region_cities.cities
+        total_cities = len(cities)
+        total_pages = (total_cities + items_per_page - 1) // items_per_page
+        
+        embeds = []
+        for page in range(1, total_pages + 1):
+            embed = cls.create_locations_embed(region_cities, page, items_per_page)
+            embeds.append(embed)
+        
+        return embeds
+</text>
