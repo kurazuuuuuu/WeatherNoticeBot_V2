@@ -125,6 +125,11 @@ class UserCommands(commands.Cog):
                     f"毎日 {hour:02d}:00 に天気情報をDMでお送りします。\n\n"
                     f"**設定地域:** {user_location[1]}\n"
                     f"**通知時間:** {hour:02d}:00\n\n"
+                    "**重要:** DMを受信するには以下の条件が必要です：\n"
+                    "• Discordの「プライバシー・安全」設定でDMを許可する\n"
+                    "• ボットと共通のサーバーに参加している\n"
+                    "• ボットをブロックしていない\n\n"
+                    "通知が届くかテストしたい場合は `/test-notification` コマンドをお試しください。\n"
                     "通知を停止したい場合は `/unschedule-weather` コマンドを使用してください。"
                 )
                 await interaction.followup.send(embed=embed)
@@ -192,6 +197,77 @@ class UserCommands(commands.Cog):
             )
             await interaction.followup.send(embed=embed)
     
+    @app_commands.command(name="test-notification", description="定時通知のテスト送信を行います")
+    async def test_notification(self, interaction: discord.Interaction):
+        """テスト通知を送信するコマンド"""
+        await interaction.response.defer()
+        
+        try:
+            # ユーザーの位置情報が設定されているかチェック
+            user_location = await user_service.get_user_location(interaction.user.id)
+            if not user_location:
+                embed = WeatherEmbedBuilder.create_error_embed(
+                    "地域未設定",
+                    "テスト通知を送信する前に、まず地域を設定してください。\n"
+                    "`/set-location` コマンドで地域を設定できます。",
+                    "not_found"
+                )
+                await interaction.followup.send(embed=embed)
+                return
+            
+            # 通知サービスを取得
+            from src.services.scheduler_service import get_scheduler_service
+            scheduler_service = get_scheduler_service()
+            
+            if not scheduler_service or not scheduler_service.notification_service:
+                embed = WeatherEmbedBuilder.create_error_embed(
+                    "サービス未初期化",
+                    "通知サービスが初期化されていません。管理者にお問い合わせください。",
+                    "general"
+                )
+                await interaction.followup.send(embed=embed)
+                return
+            
+            # テスト通知を送信
+            success = await scheduler_service.notification_service.send_test_notification(interaction.user.id)
+            
+            if success:
+                embed = WeatherEmbedBuilder.create_success_embed(
+                    "テスト通知送信完了",
+                    f"テスト通知をDMで送信しました。\n\n"
+                    f"**設定地域:** {user_location[1]}\n\n"
+                    "DMが届かない場合は、以下を確認してください：\n"
+                    "• DMの受信設定が有効になっているか\n"
+                    "• ボットと共通のサーバーに参加しているか\n"
+                    "• ボットをブロックしていないか"
+                )
+                await interaction.followup.send(embed=embed)
+            else:
+                embed = WeatherEmbedBuilder.create_error_embed(
+                    "テスト通知送信失敗",
+                    "テスト通知の送信に失敗しました。\n\n"
+                    "**考えられる原因:**\n"
+                    "• DMの受信設定が無効になっている\n"
+                    "• ボットと共通のサーバーに参加していない\n"
+                    "• ボットがブロックされている\n"
+                    "• 一時的なDiscord APIの問題\n\n"
+                    "**対処方法:**\n"
+                    "1. Discordの「プライバシー・安全」設定でDMを許可する\n"
+                    "2. ボットが参加しているサーバーに参加する\n"
+                    "3. しばらく時間をおいてから再試行する",
+                    "general"
+                )
+                await interaction.followup.send(embed=embed)
+            
+        except Exception as e:
+            logger.error(f"test-notificationコマンドでエラーが発生しました: {e}")
+            embed = WeatherEmbedBuilder.create_error_embed(
+                "システムエラー",
+                "テスト通知送信中にエラーが発生しました。",
+                "general"
+            )
+            await interaction.followup.send(embed=embed)
+
     @app_commands.command(name="my-settings", description="現在のユーザー設定を表示します")
     async def my_settings(self, interaction: discord.Interaction):
         """ユーザー設定を表示するコマンド"""
@@ -269,10 +345,11 @@ class UserCommands(commands.Cog):
             
             # 利用可能なコマンドの案内
             embed.add_field(
-                name="🔧 設定変更コマンド",
+                name="🔧 利用可能なコマンド",
                 value="• `/set-location` - 地域設定\n"
                       "• `/schedule-weather` - 通知設定\n"
-                      "• `/unschedule-weather` - 通知停止",
+                      "• `/unschedule-weather` - 通知停止\n"
+                      "• `/test-notification` - テスト通知送信",
                 inline=False
             )
             
