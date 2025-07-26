@@ -35,10 +35,10 @@ services:
       # 環境設定
       - ENVIRONMENT=${ENVIRONMENT:-production}
     volumes:
-      # データベースファイルの永続化
-      - ./data:/app/data
+      # データベースファイルの永続化（名前付きボリュームを使用）
+      - weather_bot_data:/app/data
       # ログファイルの永続化
-      - ./logs:/app/logs
+      - weather_bot_logs:/app/logs
     networks:
       - weather-bot-network
     depends_on:
@@ -94,6 +94,10 @@ volumes:
   postgres_data:
     driver: local
   redis_data:
+    driver: local
+  weather_bot_data:
+    driver: local
+  weather_bot_logs:
     driver: local
 
 networks:

@@ -150,12 +150,12 @@ chmod +x scripts/*.sh
 cp .env.example .env
 nano .env  # 本番環境の設定を入力
 
-# データディレクトリの作成
-mkdir -p data logs
-chmod 755 data logs
+# データディレクトリの作成（名前付きボリュームを使用するため不要）
+# mkdir -p data logs
+# chmod 755 data logs
 
-# セットアップスクリプトの実行
-./scripts/setup.sh
+# デプロイスクリプトの実行
+./scripts/deploy.sh
 ```
 
 ### 3. 本番環境用 Docker Compose 設定
@@ -615,9 +615,16 @@ def track_command(command_name):
 
 ### 1. データベースバックアップ
 
+#### SQLite の場合
+```bash
+# 提供されたバックアップスクリプトを使用
+./scripts/backup_db.sh
+```
+
+#### PostgreSQL の場合
 ```bash
 #!/bin/bash
-# scripts/backup-db.sh
+# scripts/backup-postgres.sh
 
 BACKUP_DIR="/opt/discord-weather-bot/backups"
 DATE=$(date +%Y%m%d_%H%M%S)

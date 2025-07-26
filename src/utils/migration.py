@@ -218,22 +218,50 @@ migration_manager = MigrationManager()
 async def check_and_upgrade_database() -> bool:
     """Check database status and upgrade if needed."""
     try:
-        if not migration_manager.is_database_up_to_date():
-            # 自動マイグレーションが有効な場合のみ実行
+        # まずデータベースファイルが存在するかチェック
+        if config.DATABASE_URL.startswith('sqlite'):
+            db_path = config.DATABASE_URL.replace('sqlite:///', '').replace('sqlite:', '')
+            if not os.path.exists(db_path):
+                logger.info(f"データベースファイルが存在しません: {db_path}")
+                # ディレクトリが存在しない場合は作成
+                os.makedirs(os.path.dirname(db_path), exist_ok=True)
+        
+        # マイグレーション状態をチェック
+        current_rev = migration_manager.get_current_revision()
+        head_rev = migration_manager.get_head_revision()
+        
+        if current_rev is None:
+            # 初回セットアップ：マイグレーションテーブルが存在しない
+            logger.info("初回データベースセットアップを実行します...")
             if migration_manager.auto_migrate:
-                logger.info("データベースが最新ではありません。マイグレーションを実行します...")
                 return migration_manager.upgrade_database()
             else:
-                # 本番環境などでは警告のみ
-                logger.warning("データベースが最新ではありませんが、自動マイグレーションは無効です")
-                logger.warning("手動でマイグレーションを実行してください: alembic upgrade head")
+                logger.warning("自動マイグレーションが無効です。手動でセットアップしてください: alembic upgrade head")
+                return False
+        elif current_rev != head_rev:
+            # マイグレーションが必要
+            logger.info(f"データベースマイグレーションが必要です: {current_rev} -> {head_rev}")
+            if migration_manager.auto_migrate:
+                return migration_manager.upgrade_database()
+            else:
+                logger.warning("自動マイグレーションが無効です。手動でマイグレーションしてください: alembic upgrade head")
                 return False
         else:
+            # 最新の状態
             logger.info("データベースは最新の状態です")
             return True
+            
     except Exception as e:
         logger.error(f"データベースの確認とアップグレードに失敗しました: {e}")
-        return False
+        # 初回セットアップの場合は、テーブル作成のみ実行
+        try:
+            logger.info("マイグレーション失敗のため、基本テーブル作成を試行します...")
+            from src.database import db_manager
+            await db_manager.create_tables()
+            return True
+        except Exception as create_error:
+            logger.error(f"テーブル作成も失敗しました: {create_error}")
+            return False
 
 
 async def get_database_status() -> dict:

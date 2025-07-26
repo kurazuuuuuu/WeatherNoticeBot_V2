@@ -452,11 +452,23 @@ class DatabaseManager:
             logger.error(f"メモリストレージ同期中にエラーが発生しました: {e}")
     
     async def create_tables(self) -> None:
-        """Create all database tables."""
+        """Create all database tables if they don't exist."""
         try:
             async with self.async_engine.begin() as conn:
-                await conn.run_sync(Base.metadata.create_all)
-            logger.info("Database tables created successfully")
+                # テーブルが存在するかチェック
+                result = await conn.execute(text("""
+                    SELECT name FROM sqlite_master 
+                    WHERE type='table' AND name='users'
+                """))
+                existing_tables = result.fetchall()
+                
+                if not existing_tables:
+                    # テーブルが存在しない場合のみ作成
+                    await conn.run_sync(Base.metadata.create_all)
+                    logger.info("Database tables created successfully")
+                else:
+                    logger.info("Database tables already exist, skipping creation")
+                    
         except Exception as e:
             logger.error(f"Failed to create database tables: {e}")
             raise
