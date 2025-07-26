@@ -143,11 +143,33 @@ class WeatherBot(commands.Bot):
         
         # 通知スケジューラーの開始
         try:
-            from src.services.scheduler_service import start_scheduler
-            await start_scheduler()
-            logger.info("通知スケジューラーを開始しました")
+            logger.info("通知スケジューラーの開始を試行します")
+            from src.services.scheduler_service import start_scheduler, get_scheduler_service
+            
+            # スケジューラーサービスの状態を確認
+            scheduler_service = get_scheduler_service()
+            if scheduler_service:
+                logger.info("スケジューラーサービスが初期化されています")
+            else:
+                logger.error("スケジューラーサービスが初期化されていません")
+                return
+            
+            # スケジューラーを開始
+            logger.info("start_scheduler()関数を呼び出します")
+            success = await start_scheduler()
+            logger.info(f"start_scheduler()関数の戻り値: {success}")
+            
+            if success:
+                logger.info("通知スケジューラーを正常に開始しました")
+                
+                # スケジューラーの状態を確認
+                status = await scheduler_service.get_scheduler_status()
+                logger.info(f"スケジューラー状態: {status}")
+            else:
+                logger.error("通知スケジューラーの開始に失敗しました")
+                
         except Exception as e:
-            logger.error(f"通知スケジューラーの開始に失敗しました: {e}")
+            logger.error(f"通知スケジューラーの開始に失敗しました: {e}", exc_info=True)
             if is_production():
                 # 本番環境では重大なエラーとしてログ記録
                 logger.critical("本番環境で通知スケジューラーの開始に失敗しました")
