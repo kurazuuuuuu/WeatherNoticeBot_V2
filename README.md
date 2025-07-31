@@ -1,4 +1,4 @@
-# Discord Weather Bot 🌤️
+# Discrodお天気情報Bot V2 🌤️
 
 日本気象庁 API を使用した Discord 天気情報ボット
 
