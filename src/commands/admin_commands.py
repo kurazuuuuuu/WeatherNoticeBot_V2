@@ -646,6 +646,199 @@ class AdminCommands(commands.Cog):
             'overall': overall_healthy,
             'components': components
         }
+    
+    @app_commands.command(name="scheduler-status", description="スケジューラーの状態を確認します（管理者専用）")
+    @app_commands.default_permissions(administrator=True)
+    async def scheduler_status(self, interaction: discord.Interaction):
+        """スケジューラーの状態を確認するコマンド"""
+        await interaction.response.defer(ephemeral=True)
+        
+        try:
+            # 管理者権限チェック
+            if not interaction.user.guild_permissions.administrator:
+                embed = WeatherEmbedBuilder.create_error_embed(
+                    "権限エラー",
+                    "このコマンドは管理者のみ使用できます。",
+                    "permission"
+                )
+                await interaction.followup.send(embed=embed, ephemeral=True)
+                return
+            
+            from src.services.scheduler_service import get_scheduler_service
+            import pytz
+            from datetime import datetime
+            
+            scheduler_service = get_scheduler_service()
+            
+            if not scheduler_service:
+                embed = WeatherEmbedBuilder.create_error_embed(
+                    "スケジューラーエラー",
+                    "スケジューラーサービスが初期化されていません。",
+                    "general"
+                )
+                await interaction.followup.send(embed=embed, ephemeral=True)
+                return
+            
+            # スケジューラーの状態を取得
+            status = await scheduler_service.get_scheduler_status()
+            current_time = datetime.now(pytz.timezone('Asia/Tokyo'))
+            
+            embed = discord.Embed(
+                title="⏰ スケジューラー状態",
+                color=discord.Color.green() if status['running'] else discord.Color.red()
+            )
+            
+            # 基本情報
+            embed.add_field(
+                name="📊 基本情報",
+                value=f"実行状態: {'🟢 実行中' if status['running'] else '🔴 停止中'}\n"
+                      f"総ジョブ数: {status['total_jobs']}\n"
+                      f"通知ユーザー数: {status['scheduled_users']}\n"
+                      f"現在時刻: {current_time.strftime('%Y-%m-%d %H:%M:%S')}",
+                inline=False
+            )
+            
+            # 次回実行予定
+            if status['next_jobs']:
+                next_jobs_text = ""
+                for job in status['next_jobs'][:5]:  # 最大5件表示
+                    if job['next_run']:
+                        next_run_str = job['next_run'].strftime('%Y-%m-%d %H:%M:%S')
+                        # 過去の時刻かチェック
+                        if job['next_run'] < current_time:
+                            next_run_str += " ⚠️ (過去)"
+                        next_jobs_text += f"• {job['name']}\n  {next_run_str}\n"
+                    else:
+                        next_jobs_text += f"• {job['name']}\n  実行時刻未設定\n"
+                
+                embed.add_field(
+                    name="📅 次回実行予定",
+                    value=next_jobs_text or "実行予定なし",
+                    inline=False
+                )
+            else:
+                embed.add_field(
+                    name="📅 次回実行予定",
+                    value="実行予定なし",
+                    inline=False
+                )
+            
+            # 通知サービスの状態
+            if scheduler_service.notification_service:
+                notification_stats = await scheduler_service.notification_service.get_notification_stats()
+                embed.add_field(
+                    name="📬 通知サービス",
+                    value=f"有効ユーザー数: {notification_stats.get('enabled_users_count', 0)}\n"
+                          f"天気サービス: {'✅' if notification_stats.get('weather_service_available') else '❌'}\n"
+                          f"AIサービス: {'✅' if notification_stats.get('ai_service_available') else '❌'}\n"
+                          f"ボットクライアント: {'✅' if notification_stats.get('bot_client_available') else '❌'}",
+                    inline=False
+                )
+            
+            await interaction.followup.send(embed=embed, ephemeral=True)
+            
+        except Exception as e:
+            logger.error(f"scheduler-statusコマンドでエラーが発生しました: {e}")
+            embed = WeatherEmbedBuilder.create_error_embed(
+                "システムエラー",
+                "スケジューラー状態の確認中にエラーが発生しました。",
+                "general"
+            )
+            await interaction.followup.send(embed=embed, ephemeral=True)
+    
+    @app_commands.command(name="test-scheduler", description="スケジューラーのテスト実行を行います（管理者専用）")
+    @app_commands.describe(user_id="テスト対象のユーザーID（省略時は全ユーザー）")
+    @app_commands.default_permissions(administrator=True)
+    async def test_scheduler(self, interaction: discord.Interaction, user_id: Optional[str] = None):
+        """スケジューラーのテスト実行を行うコマンド"""
+        await interaction.response.defer(ephemeral=True)
+        
+        try:
+            # 管理者権限チェック
+            if not interaction.user.guild_permissions.administrator:
+                embed = WeatherEmbedBuilder.create_error_embed(
+                    "権限エラー",
+                    "このコマンドは管理者のみ使用できます。",
+                    "permission"
+                )
+                await interaction.followup.send(embed=embed, ephemeral=True)
+                return
+            
+            from src.services.scheduler_service import get_scheduler_service
+            
+            scheduler_service = get_scheduler_service()
+            
+            if not scheduler_service:
+                embed = WeatherEmbedBuilder.create_error_embed(
+                    "スケジューラーエラー",
+                    "スケジューラーサービスが初期化されていません。",
+                    "general"
+                )
+                await interaction.followup.send(embed=embed, ephemeral=True)
+                return
+            
+            if user_id:
+                # 特定ユーザーのテスト
+                try:
+                    user_id_int = int(user_id)
+                    success = await scheduler_service.notification_service.send_test_notification(user_id_int)
+                    
+                    if success:
+                        embed = WeatherEmbedBuilder.create_success_embed(
+                            "テスト実行完了",
+                            f"ユーザー {user_id} へのテスト通知を送信しました。"
+                        )
+                    else:
+                        embed = WeatherEmbedBuilder.create_error_embed(
+                            "テスト実行失敗",
+                            f"ユーザー {user_id} へのテスト通知送信に失敗しました。",
+                            "general"
+                        )
+                except ValueError:
+                    embed = WeatherEmbedBuilder.create_error_embed(
+                        "入力エラー",
+                        "ユーザーIDは数値で入力してください。",
+                        "general"
+                    )
+            else:
+                # 全ユーザーのテスト（実際には最初の5人まで）
+                from src.services.user_service import UserService
+                user_service = UserService()
+                users = await user_service.get_users_with_notifications_enabled()
+                
+                if not users:
+                    embed = WeatherEmbedBuilder.create_error_embed(
+                        "テスト対象なし",
+                        "通知が有効なユーザーが見つかりません。",
+                        "not_found"
+                    )
+                else:
+                    test_users = users[:5]  # 最大5人まで
+                    success_count = 0
+                    
+                    for user in test_users:
+                        success = await scheduler_service.notification_service.send_test_notification(user.discord_id)
+                        if success:
+                            success_count += 1
+                    
+                    embed = discord.Embed(
+                        title="📊 テスト実行結果",
+                        description=f"対象ユーザー: {len(test_users)}人\n"
+                                  f"成功: {success_count}人\n"
+                                  f"失敗: {len(test_users) - success_count}人",
+                        color=discord.Color.green() if success_count > 0 else discord.Color.red()
+                    )
+            
+            await interaction.followup.send(embed=embed, ephemeral=True)
+            
+        except Exception as e:
+            logger.error(f"test-schedulerコマンドでエラーが発生しました: {e}")
+            embed = WeatherEmbedBuilder.create_error_embed(
+                "システムエラー",
+                "スケジューラーテスト中にエラーが発生しました。",
+                "general"
+            )
+            await interaction.followup.send(embed=embed, ephemeral=True)
 
 
 async def setup(bot):

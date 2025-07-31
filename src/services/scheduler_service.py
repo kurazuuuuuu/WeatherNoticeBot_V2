@@ -12,6 +12,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.jobstores.memory import MemoryJobStore
 from apscheduler.executors.asyncio import AsyncIOExecutor
+import pytz
 
 import discord
 
@@ -118,11 +119,16 @@ class SchedulerService:
             job_id = f"weather_notification_{user_id}"
             
             # 毎日指定時間に実行するCronトリガーを作成
+            # start_dateを現在時刻に設定して、過去の時刻にスケジュールされないようにする
+            tokyo_tz = pytz.timezone('Asia/Tokyo')
+            now = datetime.now(tokyo_tz)
+            
             trigger = CronTrigger(
                 hour=hour,
                 minute=0,
                 second=0,
-                timezone='Asia/Tokyo'
+                timezone='Asia/Tokyo',
+                start_date=now  # 現在時刻以降からスケジュールを開始
             )
             
             self.scheduler.add_job(
@@ -138,8 +144,47 @@ class SchedulerService:
             job = self.scheduler.get_job(job_id)
             if job:
                 next_run = job.next_run_time
-                logger.info(f"ユーザー {user_id} の定時通知を {hour}:00 にスケジュールしました (次回実行: {next_run})")
-                return True
+                current_time = datetime.now(tokyo_tz)
+                
+                # 次回実行時刻が現在時刻より未来かチェック
+                if next_run and next_run > current_time:
+                    logger.info(f"ユーザー {user_id} の定時通知を {hour}:00 にスケジュールしました (次回実行: {next_run})")
+                    return True
+                else:
+                    logger.warning(f"スケジュールされた時刻が過去または無効です: ユーザー {user_id}, 次回実行: {next_run}, 現在時刻: {current_time}")
+                    # ジョブを削除して再作成を試行
+                    self.scheduler.remove_job(job_id)
+                    
+                    # 翌日の同じ時刻にスケジュール
+                    tomorrow = current_time.replace(hour=hour, minute=0, second=0, microsecond=0)
+                    if tomorrow <= current_time:
+                        tomorrow = tomorrow.replace(day=tomorrow.day + 1)
+                    
+                    trigger = CronTrigger(
+                        hour=hour,
+                        minute=0,
+                        second=0,
+                        timezone='Asia/Tokyo',
+                        start_date=tomorrow
+                    )
+                    
+                    self.scheduler.add_job(
+                        func=self._send_scheduled_notification,
+                        trigger=trigger,
+                        args=[user_id],
+                        id=job_id,
+                        name=f"Weather notification for user {user_id}",
+                        replace_existing=True
+                    )
+                    
+                    # 再確認
+                    job = self.scheduler.get_job(job_id)
+                    if job and job.next_run_time:
+                        logger.info(f"ユーザー {user_id} の定時通知を再スケジュールしました (次回実行: {job.next_run_time})")
+                        return True
+                    else:
+                        logger.error(f"ジョブの再スケジュールに失敗しました: {job_id}")
+                        return False
             else:
                 logger.error(f"ジョブの追加に失敗しました: {job_id}")
                 return False
@@ -257,7 +302,8 @@ class SchedulerService:
             user_id: DiscordユーザーID
         """
         try:
-            logger.info(f"ユーザー {user_id} への定時通知を送信開始")
+            current_time = datetime.now(pytz.timezone('Asia/Tokyo'))
+            logger.info(f"[{current_time}] ユーザー {user_id} への定時通知を送信開始")
             
             # 通知サービスが利用可能かチェック
             if not self.notification_service:
@@ -268,9 +314,9 @@ class SchedulerService:
             success = await self.notification_service.send_scheduled_weather_update(user_id)
             
             if success:
-                logger.info(f"ユーザー {user_id} への定時通知を送信完了")
+                logger.info(f"[{current_time}] ユーザー {user_id} への定時通知を送信完了")
             else:
-                logger.warning(f"ユーザー {user_id} への定時通知送信が失敗しました")
+                logger.warning(f"[{current_time}] ユーザー {user_id} への定時通知送信が失敗しました")
             
         except Exception as e:
             logger.error(f"ユーザー {user_id} への定時通知送信に失敗: {e}", exc_info=True)
