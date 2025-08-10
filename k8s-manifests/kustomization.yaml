@@ -1,0 +1,11 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: weather-notice-bot-v2
+resources:
+  - weather-notice-bot-v2.yaml
+secretGenerator:
+  - name: weather-notice-bot-v2-secret
+    envs:
+      - ../../secret/prod.env
+    options:
+      disableNameSuffixHash: true
